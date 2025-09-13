@@ -37,7 +37,7 @@ class Simulation:
         for r in self.robots:
             decisions[r.id] = r.decide(sensed_store[r.id], self.grid)
 
-        # Trun actions
+        # Turn actions
         for r in self.robots:
             act = decisions[r.id]
             if act == 'turn_left':
@@ -74,7 +74,7 @@ class Simulation:
                 r.x,r.y = r.planned_move
             r.history.add((r.x,r.y))
 
-        # Hadle pickups
+        # Handle pickups
         pickup_attempts = defaultdict(lambda: defaultdict(list))
         for r in self.robots:
             if decisions[r.id] == 'pickup':
@@ -94,7 +94,7 @@ class Simulation:
                         if self.grid.gold[pos]<=0: del self.grid.gold[pos]
                         print(f"SUCCESS: Robots {a.id} & {b.id} from team {'Red' if team==0 else 'Blue'} picked up gold at {pos}")
 
-        # Hadle deposites
+        # Handle deposits
         for r in list(self.robots):
             if r.carrying and (r.x,r.y)==r.deposit:
                 partner = id_to_robot.get(r.partner_id)
@@ -109,32 +109,63 @@ class Simulation:
     # Draw pygame stuff
     def draw(self, screen):
         screen.fill(WHITE)
+
+        # Draw scores
+        pygame.draw.rect(screen, WHITE, (0, 0, X_WINDOW_SIZE, SCORES_HEIGHT))
+        font = pygame.font.SysFont(None,24)
+        scores = font.render(f"Scores - Red: {self.scores[0]}   Blue: {self.scores[1]}",True,BLACK)
+        screen.blit(scores,(8,8))
+
+        # Draw grid
         for gx in range(GRID_SIZE):
             for gy in range(GRID_SIZE):
-                rect = pygame.Rect(gx*CELL_SIZE, gy*CELL_SIZE, CELL_SIZE, CELL_SIZE)
+                rect = pygame.Rect(gx*CELL_SIZE, gy*CELL_SIZE + SCORES_HEIGHT, CELL_SIZE, CELL_SIZE)
                 pygame.draw.rect(screen, BLACK, rect, 1)
+
+        # Draw deposits
         for team,pos in self.grid.deposits.items():
             dx,dy = pos
-            pygame.draw.rect(screen, DEPOSIT_COL, (dx*CELL_SIZE+2, dy*CELL_SIZE+2, CELL_SIZE-4, CELL_SIZE-4))
+            pygame.draw.rect(screen, DEPOSIT_COL, (dx*CELL_SIZE+2, dy*CELL_SIZE + 2 + SCORES_HEIGHT, CELL_SIZE-4, CELL_SIZE-4))
+
+        # Draw gold
         for (x,y),count in self.grid.gold.items():
-            for i in range(min(count,4)):
-                gx = x*CELL_SIZE+4+i*6
-                gy = y*CELL_SIZE+4
-                pygame.draw.rect(screen, YELLOW, (gx,gy,8,8))
-            if count>4:
                 font = pygame.font.SysFont(None,16)
                 txt = font.render(str(count),True,BLACK)
-                screen.blit(txt,(x*CELL_SIZE+CELL_SIZE-14,y*CELL_SIZE+CELL_SIZE-14))
+                cx = x*CELL_SIZE + CELL_SIZE // 2
+                cy = y*CELL_SIZE + CELL_SIZE // 2 + SCORES_HEIGHT
+                pygame.draw.circle(screen, YELLOW, ((cx, cy)), 8)
+                screen.blit(txt, ((cx - txt.get_width() // 2), (cy - txt.get_height() // 2)))
+        
+        # Draw robots
+        robots_by_cell = defaultdict(lambda: {0: [], 1: []}) # Creates dict of robots from each team for each cell
         for r in self.robots:
-            cx = r.x*CELL_SIZE+CELL_SIZE//2
-            cy = r.y*CELL_SIZE+CELL_SIZE//2
-            color = DARK_RED if (r.team==0 and r.carrying) else (DARK_BLUE if (r.team==1 and r.carrying) else (RED if r.team==0 else BLUE))
-            pygame.draw.circle(screen,color,(cx,cy),CELL_SIZE//3)
-            if r.carrying:
-                pygame.draw.rect(screen,YELLOW,(cx-8,cy-6,16,6))
-            font = pygame.font.SysFont(None,14)
-            txt = font.render(str(r.id),True,BLACK)
-            screen.blit(txt,(cx-6,cy-6))
-        font = pygame.font.SysFont(None,24)
-        scr = font.render(f"Scores - Red: {self.scores[0]}   Blue: {self.scores[1]}",True,BLACK)
-        screen.blit(scr,(8,8))
+            robots_by_cell[(r.x, r.y)][r.team].append(r)
+
+        for (x,y), teams in robots_by_cell.items():
+            # Red team
+            for idx, r in enumerate(teams[0][:2]): # Maximum 2 robots
+                if idx == 0: # Top left
+                    cx = x * CELL_SIZE + CELL_SIZE // 4
+                    cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
+                else: # Bottom left
+                    cx = x * CELL_SIZE + CELL_SIZE // 4
+                    cy = y * CELL_SIZE + 3 * CELL_SIZE // 4 + SCORES_HEIGHT
+                color = DARK_RED if r.carrying else RED
+                pygame.draw.circle(screen, color, (cx, cy), CELL_SIZE // 5)
+                font = pygame.font.SysFont(None, 14)
+                txt = font.render(str(r.id), True, BLACK)
+                screen.blit(txt, (cx - 6, cy - 6))
+            
+            # Blue team
+            for idx, r in enumerate(teams[1][:2]): # Maximum 2 robots
+                if idx == 0: # Top right
+                    cx = x * CELL_SIZE + 3 * CELL_SIZE // 4
+                    cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
+                else: # Bottom right
+                    cx = x * CELL_SIZE + 3 * CELL_SIZE // 4
+                    cy = y * CELL_SIZE + 3 * CELL_SIZE // 4 + SCORES_HEIGHT
+                color = DARK_BLUE if r.carrying else BLUE
+                pygame.draw.circle(screen, color, (cx, cy), CELL_SIZE // 5)
+                font = pygame.font.SysFont(None, 14)
+                txt = font.render(str(r.id), True, BLACK)
+                screen.blit(txt, (cx - 6, cy - 6))

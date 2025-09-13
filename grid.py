@@ -4,10 +4,10 @@ from config import GRID_SIZE, GOLDS
 class Grid:
     def __init__(self):
         self.gold = {}
-        self.deposits = {0:(0,0),1:(GRID_SIZE-1,GRID_SIZE-1)}
         for _ in range(GOLDS):
             x,y = random.randint(0,GRID_SIZE-1), random.randint(0,GRID_SIZE-1)
             self.gold[(x,y)] = self.gold.get((x,y),0)+1
+        self.deposits = {0:(0,0),1:(GRID_SIZE-1,GRID_SIZE-1)}
         self._robots = []
 
     # Add Robot object to _robots list
