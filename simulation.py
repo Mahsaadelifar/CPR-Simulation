@@ -6,6 +6,7 @@ from collections import defaultdict
 from config import *
 from robot import Robot
 from grid import Grid
+from base import *
 
 # Functions here run at every simulation step
 class Simulation:
@@ -13,10 +14,18 @@ class Simulation:
         self.grid = Grid()
         self.robots = []
         for i in range(ROBOTS_PER_TEAM):
-            self.robots.append(Robot(random.randint(0,3), random.randint(0,3), 0, self.grid.deposits[0]))
-            self.robots.append(Robot(random.randint(GRID_SIZE-4,GRID_SIZE-1), random.randint(GRID_SIZE-4,GRID_SIZE-1), 1, self.grid.deposits[1]))
+            # Red team
+            red_deposit_pos = Position(0, 0)
+            rx = random.randint(0, 3)
+            ry = random.randint(0, 3)
+            self.robots.append(Robot(Position(rx, ry), Team.RED, red_deposit_pos))
+            # Blue team
+            blue_deposit_pos = Position(GRID_SIZE - 1, GRID_SIZE - 1)
+            bx = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
+            by = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
+            self.robots.append(Robot(Position(bx, by), Team.BLUE, blue_deposit_pos))
         self.grid.update_robots_positions(self.robots)
-        self.scores = {0:0,1:0} # team_id:score (0:Red, 1:Blue)
+        self.scores = {Team.RED: 0, Team.BLUE: 0}
         self.messages = [] # dicts with keys: from, team, type, pos
 
     # Main logic for each simulation step
@@ -52,9 +61,9 @@ class Simulation:
         for r in self.robots:
             if decisions[r.id] == 'move':
                 dx,dy = DIR_VECT[r.facing]
-                nx,ny = wrap_pos(r.x+dx,r.y+dy)
-                r.planned_move = (nx,ny)
-                move_intents[r.id] = (nx,ny)
+                nx,ny = wrap_pos(r.position.x +dx, r.position.y +dy)
+                r.planned_move = Position(nx,ny)
+                move_intents[r.id] = r.planned_move
             else:
                 r.planned_move = None
 
@@ -64,26 +73,26 @@ class Simulation:
             if r.carrying and r.partner_id is not None:
                 partner = id_to_robot.get(r.partner_id)
                 if partner and partner.planned_move != r.planned_move:
-                    r.planned_move = (r.x,r.y)
-                    partner.planned_move = (partner.x, partner.y)
+                    r.planned_move = Position(r.position.x, r.position.y)
+                    partner.planned_move = Position(partner.position.x, partner.position.y)
                     print(f"WAIT: Robots {r.id} & {partner.id} waiting to align moves")
 
         # Execute moves
         for r in self.robots:
             if r.planned_move:
-                r.x,r.y = r.planned_move
-            r.history.add((r.x,r.y))
+                r.position = r.planned_move
+            r.history.add((r.position.x, r.position.y))
 
-        # Handle pickups--------------------------------------------------------------------------------------------------------------------
+        ### Handle pickups ###
         pickup_attempts = defaultdict(lambda: defaultdict(list))
 
         #store positions where at least one robot is trying to pick up gold
-        pickup_positions = set((r.x,r.y) for r in self.robots if decisions[r.id] == 'pickup')
+        pickup_positions = set((r.position.x,r.position.y) for r in self.robots if decisions[r.id] == 'pickup')
 
         #iterate through positions to get robots at each position
         for pos in pickup_positions:
             robots_here = self.grid.robots_at(pos)
-            gold_here = self.grid.gold.get(pos,0) #number of gold at the position
+            gold_here = self.grid.tiles[pos].gold #number of gold at the position
 
             #group robots not carrying anything at the tile by their teams
             team_groups = defaultdict(list) #key is the team, value is the robot object
@@ -155,9 +164,9 @@ class Simulation:
                        print(f"PICKUP FAILURE: Robots {a.id} & {b.id} from team {'Red' if team_id ==0 else 'Blue'} failed to pickup gold") 
                    
 
-        # Handle deposits -------------------------------------------------------------------------------------
+        ### Handle deposits ###
         for r in list(self.robots):
-            if r.carrying and (r.x,r.y)==r.deposit:
+            if r.carrying and r.position == r.deposit:
                 partner = id_to_robot.get(r.partner_id)
                 if partner and partner.carrying and partner.team==r.team and (partner.x,partner.y)==(r.x,r.y):
                     r.carrying = partner.carrying = False
@@ -174,37 +183,35 @@ class Simulation:
         # Draw scores
         pygame.draw.rect(screen, WHITE, (0, 0, X_WINDOW_SIZE, SCORES_HEIGHT))
         font = pygame.font.SysFont(None,24)
-        scores = font.render(f"Scores - Red: {self.scores[0]}   Blue: {self.scores[1]}",True,BLACK)
+        scores = font.render(f"Scores - Red: {self.scores[Team.RED]}   Blue: {self.scores[Team.BLUE]}",True,BLACK)
         screen.blit(scores,(8,8))
 
         # Draw grid
-        for gx in range(GRID_SIZE):
-            for gy in range(GRID_SIZE):
-                rect = pygame.Rect(gx*CELL_SIZE, gy*CELL_SIZE + SCORES_HEIGHT, CELL_SIZE, CELL_SIZE)
-                pygame.draw.rect(screen, BLACK, rect, 1)
+        for (gx, gy), tile in self.grid.tiles.items():
+            rect = pygame.Rect(gx * CELL_SIZE, gy * CELL_SIZE + SCORES_HEIGHT, CELL_SIZE, CELL_SIZE)
+            pygame.draw.rect(screen, BLACK, rect, 1)
 
-        # Draw deposits
-        for team,pos in self.grid.deposits.items():
-            dx,dy = pos
-            pygame.draw.rect(screen, DEPOSIT_COL, (dx*CELL_SIZE+2, dy*CELL_SIZE + 2 + SCORES_HEIGHT, CELL_SIZE-4, CELL_SIZE-4))
+            # Draw deposit
+            if tile.deposit:
+                pygame.draw.rect(screen, DEPOSIT_COL, (gx * CELL_SIZE + 2, gy * CELL_SIZE + 2 + SCORES_HEIGHT, CELL_SIZE - 4, CELL_SIZE - 4))
 
-        # Draw gold
-        for (x,y),count in self.grid.gold.items():
-                font = pygame.font.SysFont(None,16)
-                txt = font.render(str(count),True,BLACK)
-                cx = x*CELL_SIZE + CELL_SIZE // 2
-                cy = y*CELL_SIZE + CELL_SIZE // 2 + SCORES_HEIGHT
-                pygame.draw.circle(screen, YELLOW, ((cx, cy)), 8)
-                screen.blit(txt, ((cx - txt.get_width() // 2), (cy - txt.get_height() // 2)))
+            # Draw gold
+            if tile.gold > 0:
+                font = pygame.font.SysFont(None, 16)
+                txt = font.render(str(tile.gold), True, BLACK)
+                cx = gx * CELL_SIZE + CELL_SIZE // 2
+                cy = gy * CELL_SIZE + CELL_SIZE // 2 + SCORES_HEIGHT
+                pygame.draw.circle(screen, YELLOW, (cx, cy), 8)
+                screen.blit(txt, (cx - txt.get_width() // 2, cy - txt.get_height() // 2))
         
         # Draw robots
-        robots_by_cell = defaultdict(lambda: {0: [], 1: []}) # Creates dict of robots from each team for each cell
+        robots_by_cell = defaultdict(lambda: {Team.RED: [], Team.BLUE: []}) # Creates dict of robots from each team for each cell
         for r in self.robots:
-            robots_by_cell[(r.x, r.y)][r.team].append(r)
+            robots_by_cell[r.position.get_tuple()][r.team].append(r)
 
         for (x,y), teams in robots_by_cell.items():
             # Red team
-            for idx, r in enumerate(teams[0][:2]): # Maximum 2 robots
+            for idx, r in enumerate(teams[Team.RED][:2]): # Maximum 2 robots
                 if idx == 0: # Top left
                     cx = x * CELL_SIZE + CELL_SIZE // 4
                     cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
@@ -218,7 +225,7 @@ class Simulation:
                 screen.blit(txt, (cx - 6, cy - 6))
             
             # Blue team
-            for idx, r in enumerate(teams[1][:2]): # Maximum 2 robots
+            for idx, r in enumerate(teams[Team.BLUE][:2]): # Maximum 2 robots
                 if idx == 0: # Top right
                     cx = x * CELL_SIZE + 3 * CELL_SIZE // 4
                     cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
