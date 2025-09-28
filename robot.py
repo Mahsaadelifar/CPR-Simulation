@@ -8,8 +8,8 @@ class Robot:
         self.id = Robot.next_id; Robot.next_id += 1
         self.position = position
         self.team = team
-        self.deposit = deposit
-        self.facing = random.choice([0,1,2,3])
+        self.deposit = deposit # Deposite based on team
+        self.facing = random.choice([0,1,2,3]) # Random initial direction
         self.carrying = False
         self.partner_id = None
         self.history = set(); self.history.add(position.get_tuple())
@@ -17,10 +17,12 @@ class Robot:
         self.last_action = 'wait'
         self.planned_move = None
     
-    # Returns a dict of sensed info at x,y based on the heading and the vision range
     def sense(self, grid):
-        """Return dict of sensed info at nearby cells"""
-        rel = []
+        """
+        Return dict of sensed info at nearby cells.
+        Robots can detect gold, deposits, and other robots.
+        """
+        rel = [] # View of sight for each robot based on its facing
         for p in BASE_SENSE:
             rp = p
             for _ in range(self.facing):
@@ -29,16 +31,23 @@ class Robot:
         sensed = {}
         for dx,dy in rel:
             sx,sy = wrap_pos(self.position.x+dx,self.position.y+dy)
+            tile = grid.tiles[(sx,sy)]
             sensed[(sx,sy)] = {
-                'gold': grid.tiles[(sx,sy)].gold, # Number of gold pieces
-                'deposit': (sx,sy) if grid.tiles[(sx,sy)].deposit else False, # Is it a deposit?
-                'robots': [r.id for r in grid.robots_at((sx,sy))] # list of Robots present
+                'gold': tile.gold,                     # Gold count
+                'deposit': tile.deposit,               # Is deposit
+                'robots': [r.id for r in grid.robots_at((sx,sy))]
             }
         return sensed
 
-    # Used in decide() to determine action towards a destination
     def action_based_on_destination(self, dest):
-        tx,ty = dest
+        """
+        Decide movement direction towards a destination.
+        Returns: 'move', 'turn_left', 'turn_right', or 'wait'
+        """
+        if isinstance(dest, Position):
+            tx, ty = dest.x, dest.y
+        else:  # if already a tuple
+            tx, ty = dest
         dx = tx - self.position.x
         dy = ty - self.position.y
         # dx>0 means deposit is to the right | dy>0 means deposit is downwards | 0=N, 1=E, 2=S, 3=W
@@ -54,28 +63,34 @@ class Robot:
             diff = (desired - self.facing) % 4
             return 'turn_right' if diff==1 else 'turn_left'
     
-    # Decide next action based on sensed info
     def decide(self, sensed, grid):
+        """
+        Decide next action based on sensed environment and current state.
+        """
+
+        # Deposit gold if carrying and at bas
         if self.carrying and self.position == self.deposit:
             return 'deposit'
 
+        # Try to pick up gold if on a gold tile with teammate
         if grid.tiles[self.position.get_tuple()].gold > 0:
             robots_here = grid.robots_at(self.position)
             same = [r for r in robots_here if r.team==self.team and not r.carrying]
             other = [r for r in robots_here if r.team!=self.team and not r.carrying]
-            if len(same) == 2 and len(other)==0: # This the part we need to develop more
+            if (len(same)>= 2 and len(other)<= 1 and grid.tiles[self.position.get_tuple()].gold >= 1) or (len(same) >= 2 and len(other) >= 2 and grid.tiles[self.position.get_tuple()].gold >= 2):
                 return 'pickup'
-
+        
+        # Carrying? head home
         if self.carrying:
             return self.action_based_on_destination(self.deposit)
 
-        # Prefer unvisited in front
+        # Prefer unvisited forward cell
         fx,fy = DIR_VECT[self.facing]
         nx,ny = wrap_pos(self.position.x+fx, self.position.y+fy)
         if (nx,ny) not in self.history:
             return 'move'
 
-        # Move toward sensed gold
+        # Move toward nearest sensed gold
         gold_positions = [pos for pos,info in sensed.items() if info['gold']>0]
         if gold_positions:
             best = min(gold_positions, key=lambda p: abs(p[0]-self.position.x)+abs(p[1]-self.position.y))
@@ -83,7 +98,7 @@ class Robot:
 
         # Explore neighboring unvisited cells
         neigh = []
-        for d in range(4):
+        for d in range(4): # Check all 4 directions
             vx,vy = DIR_VECT[d]
             cx,cy = wrap_pos(self.position.x+vx,self.position.y+vy)
             if (cx,cy) not in self.history:
@@ -95,5 +110,6 @@ class Robot:
             else:
                 diff = (dtarget - self.facing) % 4
                 return 'turn_right' if diff==1 else 'turn_left'
-
+            
+        # Default random action
         return random.choice(['move','turn_left','turn_right','wait'])

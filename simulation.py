@@ -151,24 +151,24 @@ class Simulation:
         #keys are position (x,y), values are a dict where keys are the team id, and values are a list of robot objects from the team
 
         for pos,teams in pickup_attempts.items():
-           gold_here = self.grid.gold.get(pos,0)
+           gold_here = self.grid.tiles[pos].gold
            for team_id, pair_list in teams.items():
                for (a,b) in pair_list:
                    if gold_here >=1:
                        a.carrying = b.carrying = True
                        a.partner_id, b.partner_id = b.id, a.id
                        gold_here -= 1
-                       self.grid.gold[pos] = gold_here
-                       print(f"PICKUP SUCCESS: Robots {a.id} & {b.id} from team {'Red' if team_id ==0 else 'Blue'} picked up gold at {pos}")
+                       self.grid.tiles[pos].gold = gold_here
+                       print(f"PICKUP SUCCESS: Robots {a.id} & {b.id} from team {team_id.name} picked up gold at {pos}")
                    else:
-                       print(f"PICKUP FAILURE: Robots {a.id} & {b.id} from team {'Red' if team_id ==0 else 'Blue'} failed to pickup gold") 
+                       print(f"PICKUP FAILURE: Robots {a.id} & {b.id} from team {team_id.name} failed to pickup gold") 
                    
 
         ### Handle deposits ###
         for r in list(self.robots):
             if r.carrying and r.position == r.deposit:
                 partner = id_to_robot.get(r.partner_id)
-                if partner and partner.carrying and partner.team==r.team and (partner.x,partner.y)==(r.x,r.y):
+                if partner and partner.carrying and partner.team==r.team and partner.position == r.position:
                     r.carrying = partner.carrying = False
                     r.partner_id = partner.partner_id = None
                     self.scores[r.team] += 1
