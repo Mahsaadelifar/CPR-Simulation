@@ -15,15 +15,20 @@ class Simulation:
         self.robots = []
         for i in range(ROBOTS_PER_TEAM):
             # Red team
+            
             red_deposit_pos = Position(0, 0)
             rx = random.randint(0, 3)
             ry = random.randint(0, 3)
             self.robots.append(Robot(Position(rx, ry), Team.RED, red_deposit_pos))
+
+
             # Blue team
             blue_deposit_pos = Position(GRID_SIZE - 1, GRID_SIZE - 1)
             bx = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
             by = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
             self.robots.append(Robot(Position(bx, by), Team.BLUE, blue_deposit_pos))
+
+
         self.grid.update_robots_positions(self.robots)
         self.scores = {Team.RED: 0, Team.BLUE: 0}
         self.messages = [] # dicts with keys: from, team, type, pos
@@ -33,18 +38,23 @@ class Simulation:
         decisions = {} # Robot_id : action
         sensed_store = {} # Robot_id : sensed dict
         self.messages = [] # Clear messages each turn
+
         for r in self.robots:
-            sensed = r.sense(self.grid)
+            sensed = r.sense(self.grid) 
             sensed_store[r.id] = sensed
             for pos,info in sensed.items():
                 if info['gold']>0:
-                    self.messages.append({'from':r.id,'team':r.team,'type':'gold','pos':pos})
-                    break
+                    #self.messages.append({'from':r.id,'team':r.team,'type':'gold','pos':pos}) ifnoring this cause it's gonna break the current messaging system
+                    #break
+                    pass
         for r in self.robots: # We can ingnore this since we are not using messages yet
-            r.messages = [m for m in self.messages if m['team']==r.team]
+            #r.messages = [m for m in self.messages if m['team']==r.team]
+            pass
+
+
 
         for r in self.robots:
-            decisions[r.id] = r.decide(sensed_store[r.id], self.grid)
+            decisions[r.id] = r.decide_final(sensed_store[r.id], self.grid) 
 
         # Turn actions
         for r in self.robots:
@@ -56,7 +66,7 @@ class Simulation:
                 r.facing = (r.facing + 1) % 4
                 r.last_action = 'turn_right'
 
-        # Plan moves
+        # Storing movements planned by each robot in a move_intents dict
         move_intents = {}
         for r in self.robots:
             if decisions[r.id] == 'move':
@@ -67,7 +77,8 @@ class Simulation:
             else:
                 r.planned_move = None
 
-        # Cooperative check for partners
+        """
+        # Cooperative check for partners ALREADY MOVED TO INSIDE ROBOT CLASS
         id_to_robot = {r.id:r for r in self.robots}
         for r in self.robots:
             if r.carrying and r.partner_id is not None:
@@ -76,12 +87,13 @@ class Simulation:
                     r.planned_move = Position(r.position.x, r.position.y)
                     partner.planned_move = Position(partner.position.x, partner.position.y)
                     print(f"WAIT: Robots {r.id} & {partner.id} waiting to align moves")
+        """
 
         # Execute moves
         for r in self.robots:
             if r.planned_move:
                 r.position = r.planned_move
-            r.history.add((r.position.x, r.position.y))
+            #r.history.add((r.position.x, r.position.y)) #this needs to be removed. not allowed for decentrlisation
 
         ### Handle pickups ###
         pickup_attempts = defaultdict(lambda: defaultdict(list))
@@ -107,8 +119,8 @@ class Simulation:
             team1_id = team_ids[0]
             team2_id = team_ids[1] if len(team_ids)>1 else None
 
-            team1 = team_groups[team1_id] #get list of robots in team one from the stored info
-            team2 = team_groups[team2_id] if team2_id else [] #get list of robots in team two from the stored info
+            team1 = list(set(team_groups[team1_id])) #get list of robots in team one from the stored info
+            team2 = list(set(team_groups[team2_id] if team2_id else [])) #get list of robots in team two from the stored info
 
             #case where both teams are there
 
@@ -155,8 +167,10 @@ class Simulation:
            for team_id, pair_list in teams.items():
                for (a,b) in pair_list:
                    if gold_here >=1:
-                       a.carrying = b.carrying = True
-                       a.partner_id, b.partner_id = b.id, a.id
+                       #a.carrying = b.carrying = True  moved all this inside robot class to decentralise
+                       #a.partner_id, b.partner_id = b.id, a.id
+                       #a.partner = b
+                       #b.partner = a
                        gold_here -= 1
                        self.grid.tiles[pos].gold = gold_here
                        print(f"PICKUP SUCCESS: Robots {a.id} & {b.id} from team {team_id.name} picked up gold at {pos}")
@@ -167,10 +181,11 @@ class Simulation:
         ### Handle deposits ###
         for r in list(self.robots):
             if r.carrying and r.position == r.deposit:
-                partner = id_to_robot.get(r.partner_id)
+                partner = r.partner
                 if partner and partner.carrying and partner.team==r.team and partner.position == r.position:
-                    r.carrying = partner.carrying = False
-                    r.partner_id = partner.partner_id = None
+                    #r.carrying = partner.carrying = False 
+                    #r.partner_id = partner.partner_id = None.      moved all of this logic into robot class to decentralise
+                    #r.partner = None
                     self.scores[r.team] += 1
                     print(f"DEPOSIT SUCCESS: Robots {r.id} & {partner.id} from team {'Red' if r.team==0 else 'Blue'} deposited gold at {r.deposit}")
 
