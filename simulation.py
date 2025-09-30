@@ -191,6 +191,17 @@ class Simulation:
 
         self.grid.update_robots_positions(self.robots)
 
+    # Draw directions onto robot
+    def draw_directions(self, screen, cx, cy, facing):
+        if facing == 0: # North
+            pygame.draw.polygon(screen, BLACK, [(cx, cy - 12), (cx - 7, cy), (cx + 7, cy)])
+        elif facing == 1: # East
+            pygame.draw.polygon(screen, BLACK, [(cx + 12, cy), (cx, cy - 7), (cx, cy + 7)])
+        elif facing == 2: # South
+            pygame.draw.polygon(screen, BLACK, [(cx, cy + 12), (cx - 7, cy), (cx + 7, cy)])
+        elif facing == 3: # West
+            pygame.draw.polygon(screen, BLACK, [(cx - 12, cy), (cx, cy - 7), (cx, cy + 7)])
+
     # Draw pygame stuff
     def draw(self, screen):
         screen.fill(WHITE)
@@ -230,9 +241,11 @@ class Simulation:
                 if idx == 0: # Top left
                     cx = x * CELL_SIZE + CELL_SIZE // 4
                     cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
+                    self.draw_directions(screen, cx, cy, r.facing)
                 else: # Bottom left
                     cx = x * CELL_SIZE + CELL_SIZE // 4
                     cy = y * CELL_SIZE + 3 * CELL_SIZE // 4 + SCORES_HEIGHT
+                    self.draw_directions(screen, cx, cy, r.facing)
                 color = DARK_RED if r.carrying else RED
                 pygame.draw.circle(screen, color, (cx, cy), CELL_SIZE // 5)
                 font = pygame.font.SysFont(None, 14)
@@ -244,9 +257,11 @@ class Simulation:
                 if idx == 0: # Top right
                     cx = x * CELL_SIZE + 3 * CELL_SIZE // 4
                     cy = y * CELL_SIZE + CELL_SIZE // 4 + SCORES_HEIGHT
+                    self.draw_directions(screen, cx, cy, r.facing)
                 else: # Bottom right
                     cx = x * CELL_SIZE + 3 * CELL_SIZE // 4
                     cy = y * CELL_SIZE + 3 * CELL_SIZE // 4 + SCORES_HEIGHT
+                    self.draw_directions(screen, cx, cy, r.facing)
                 color = DARK_BLUE if r.carrying else BLUE
                 pygame.draw.circle(screen, color, (cx, cy), CELL_SIZE // 5)
                 font = pygame.font.SysFont(None, 14)
