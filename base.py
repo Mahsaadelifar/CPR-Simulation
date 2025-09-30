@@ -26,6 +26,7 @@ class Tile:
         self.position = position      # Position object
         self.deposit = deposit        # True if this tile is a deposit/base
         self.gold = gold              # Amount of gold on this tile
+        self.robots = []              # List of robot objects at that tile
     
     def set_deposit(self):
         """Mark this tile as a deposit location."""
@@ -45,6 +46,14 @@ class Tile:
     def get_tuple(self):
         """Return the (x, y) coordinate of the tile."""
         return (self.position.x, self.position.y)
+    
+    def robot_off_tile(self, robot): #use to add a robot to a tile position
+        if robot in self.robots:
+            self.robots.remove(robot)
+    
+    def robot_on_tile(self,robot): #use to remove a robot from a tile position
+        if robot not in self.robots:
+            self.robots.append(robot)
 
 
 # Utility functions
