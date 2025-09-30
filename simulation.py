@@ -19,19 +19,112 @@ class Simulation:
             red_deposit_pos = Position(0, 0)
             rx = random.randint(0, 3)
             ry = random.randint(0, 3)
-            self.robots.append(Robot(Position(rx, ry), Team.RED, red_deposit_pos))
+            red_robot = Robot(Position(rx, ry), Team.RED, red_deposit_pos)
+            self.robots.append(red_robot)
+            self.grid.tiles[(rx,ry)].robots.append(red_robot)
+            
 
 
             # Blue team
             blue_deposit_pos = Position(GRID_SIZE - 1, GRID_SIZE - 1)
             bx = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
             by = random.randint(GRID_SIZE - 4, GRID_SIZE - 1)
-            self.robots.append(Robot(Position(bx, by), Team.BLUE, blue_deposit_pos))
+            blue_robot = Robot(Position(bx, by), Team.BLUE, blue_deposit_pos)
+            self.robots.append(blue_robot)
+            self.grid.tiles[(bx,by)].robots.append(blue_robot)
 
 
         self.grid.update_robots_positions(self.robots)
         self.scores = {Team.RED: 0, Team.BLUE: 0}
         #self.messages = [] why does the simulation have a self.messages??
+    
+
+    def handle_pickups(self, decisions):
+        pickup_attempts = defaultdict(lambda: defaultdict(list))
+
+        #store positions where at least one robot is trying to pick up gold
+        pickup_positions = set((r.position.x,r.position.y) for r in self.robots if decisions[r.id] == 'pickup')
+
+        for (x,y) in pickup_positions:
+            tile_here = self.grid.tiles[(x,y)]
+            robots_here = tile_here.robots #list of robots on the tile object
+            gold_here = tile_here.gold
+
+            team_groups = defaultdict(list) #key is the team, value is the robot object
+            for rb in robots_here:
+                if decisions[rb.id] == "pickup" and not rb.carrying: #if there are other robots on that square but it's not trying to pick up does the pickup still fail?? cause I don't check for that rn
+                    team_groups[rb.team].append(rb) 
+
+                if len(team_groups) ==0:
+                    continue #no robots at the position
+
+                team_ids = list(team_groups.keys())
+                team1_id = team_ids[0]
+                team2_id = team_ids[1] if len(team_ids)>1 else None
+
+                team1 = list(set(team_groups[team1_id])) #get list of robots in team one from the stored info
+                team2 = list(set(team_groups[team2_id] if team2_id else [])) #get list of robots in team two from the stored info
+
+                #case where both teams are there
+
+                if team2_id:
+                    team1_valid = len(team1) == 2
+                    team2_valid = len(team2) == 2
+
+                    #if both teams valid
+                    if team1_valid and team2_valid:
+                        if gold_here >=2: #if more than 2 gold on the tile
+                            pickup_attempts[pos][team1_id].append(tuple(team1))
+                            pickup_attempts[pos][team2_id].append(tuple(team2))
+                            print(f"PICKUP SUCCESS: both teams {team1_id} (robots {team1}) and {team2_id} (robots {team2}) picked up gold")
+                        else:
+                            print(f"PICKUP FAILURE: Only {gold_here} gold bar(s) at {pos}, both teams failed to pick up gold")
+
+                    else: #one or both teams fail to pick up because they don't have two robots picking up gold
+                        #should the other team actually succeed if one team has too many/ not enough robots?
+                        if team1_valid and not team2_valid and gold_here >= 1:
+                                pickup_attempts[pos][team1_id].append(tuple(team1))
+                                print(f"PICKUP FAILURE: Team {team2_id} failed pickup at {pos} (has {len(team2)} pickers)")
+                        elif team2_valid and not team1_valid and gold_here >= 1:
+                                pickup_attempts[pos][team2_id].append(tuple(team2))
+                                print(f"PICKUP FAILURE: Team {team1_id} failed pickup at {pos} (has {len(team1)} pickers)")
+                        else: #case where both are not valid
+                            print(f"PICKUP FAILURE: Both teams failed pickup at {pos}, team {team1_id} has (has {len(team1)} pickers and team {team2_id} (has {len(team2)} pickers)")
+
+
+                #case where only one team is picking up gold
+                else:
+                    if len(team1) == 2:
+                        if gold_here >= 1:
+                            pickup_attempts[pos][team1_id].append(tuple(team1))
+                        else:
+                            print(f"PICKUP FAILURE: No gold at {pos}, team {team1_id} fails to pick up gold")
+                    else:
+                        print(f"PICKUP FAILURE: Team {team1_id} failed pickup at {pos} (has {len(team1)} pickers)")
+
+            #at this point, we have a pickup_attempts dict which stores successful pickup attempts at each positions
+            #keys are position (x,y), values are a dict where keys are the team id, and values are a list of robot objects from the team
+
+            for pos,teams in pickup_attempts.items():
+               gold_here = self.grid.tiles[pos].gold
+               for team_id, pair_list in teams.items():
+                   for (a,b) in pair_list:
+                       if gold_here >=1:
+                           gold_here -= 1
+                           self.grid.tiles[pos].gold = gold_here
+                           print(f"PICKUP SUCCESS: Robots {a.id} & {b.id} from team {team_id.name} picked up gold at {pos}")
+                       else:
+                           print(f"PICKUP FAILURE: Robots {a.id} & {b.id} from team {team_id.name} failed to pickup gold")
+
+            ### Handle deposits ###
+            for r in list(self.robots):
+                if r.carrying and r.position == r.deposit:
+                    partner = r.partner
+                    if partner and partner.carrying and partner.team==r.team and partner.position == r.position:
+                        self.scores[r.team] += 1
+                        print(f"DEPOSIT SUCCESS: Robots {r.id} & {partner.id} from team {'Red' if r.team==0 else 'Blue'} deposited gold at {r.deposit}")
+
+            self.grid.update_robots_positions(self.robots)
 
 
     # Main logic for each simulation step
@@ -87,9 +180,17 @@ class Simulation:
         # Execute moves
         for r in self.robots:
             if r.planned_move:
+                #updating robots present at each tile
+                self.grid.tiles[(r.position.x,r.position.y)].robot_off_tile(r)
+                self.grid.tiles[(r.planned_move.x,r.planned_move.y)].robot_on_tile(r)
+
+                #updating robot positions
                 r.position = r.planned_move
             #r.history.add((r.position.x, r.position.y)) #this needs to be removed. not allowed for decentrlisation
+    
+        self.handle_pickups(decisions)
 
+    """
         ### Handle pickups ###
         pickup_attempts = defaultdict(lambda: defaultdict(list))
 
@@ -185,6 +286,7 @@ class Simulation:
                     print(f"DEPOSIT SUCCESS: Robots {r.id} & {partner.id} from team {'Red' if r.team==0 else 'Blue'} deposited gold at {r.deposit}")
 
         self.grid.update_robots_positions(self.robots)
+    """
     
 
 

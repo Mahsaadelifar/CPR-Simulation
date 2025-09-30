@@ -47,11 +47,13 @@ class Tile:
         """Return the (x, y) coordinate of the tile."""
         return (self.position.x, self.position.y)
     
-    def robot_on_tile(self, robot): #use to add a robot to a tile position
-        self.robot.remove(robot)
+    def robot_off_tile(self, robot): #use to add a robot to a tile position
+        if robot in self.robots:
+            self.robots.remove(robot)
     
-    def robot_off_tile(self,robot): #use to remove a robot from a tile position
-        self.robot.append(robot)
+    def robot_on_tile(self,robot): #use to remove a robot from a tile position
+        if robot not in self.robots:
+            self.robots.append(robot)
 
 
 # Utility functions
