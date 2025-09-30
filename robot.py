@@ -157,8 +157,13 @@ class Robot:
             if partner_planned_action == self_planned_action:
                 return self_planned_action
 
-            else:
-                return 'wait'
+            else:  #this is currently cuasing a deadlock where the robots freeze
+                #introducing robot priority to try to get rid of this deadlock
+                if self.id < self.partner_id:
+                    return self_planned_action
+                else:
+                    return partner_planned_action
+
         
 
             

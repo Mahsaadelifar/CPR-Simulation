@@ -31,7 +31,8 @@ class Simulation:
 
         self.grid.update_robots_positions(self.robots)
         self.scores = {Team.RED: 0, Team.BLUE: 0}
-        self.messages = [] # dicts with keys: from, team, type, pos
+        #self.messages = [] why does the simulation have a self.messages??
+
 
     # Main logic for each simulation step
     def step(self): # Runs at each simulation step
@@ -42,19 +43,13 @@ class Simulation:
         for r in self.robots:
             sensed = r.sense(self.grid) 
             sensed_store[r.id] = sensed
-            for pos,info in sensed.items():
-                if info['gold']>0:
+            decisions[r.id] = r.decide_final(sensed_store[r.id], self.grid) 
+        
+            #for pos,info in sensed.items():
+            #    if info['gold']>0:
                     #self.messages.append({'from':r.id,'team':r.team,'type':'gold','pos':pos}) ifnoring this cause it's gonna break the current messaging system
                     #break
-                    pass
-        for r in self.robots: # We can ingnore this since we are not using messages yet
-            #r.messages = [m for m in self.messages if m['team']==r.team]
-            pass
-
-
-
-        for r in self.robots:
-            decisions[r.id] = r.decide_final(sensed_store[r.id], self.grid) 
+            #        pass
 
         # Turn actions
         for r in self.robots:
@@ -190,6 +185,8 @@ class Simulation:
                     print(f"DEPOSIT SUCCESS: Robots {r.id} & {partner.id} from team {'Red' if r.team==0 else 'Blue'} deposited gold at {r.deposit}")
 
         self.grid.update_robots_positions(self.robots)
+    
+
 
     # Draw pygame stuff
     def draw(self, screen):
