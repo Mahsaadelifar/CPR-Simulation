@@ -1,6 +1,6 @@
 import pygame
 import sys
-from config import X_WINDOW_SIZE, Y_WINDOW_SIZE, FPS
+from config import X_WINDOW_SIZE, Y_WINDOW_SIZE
 from simulation import Simulation
 
 def main():
