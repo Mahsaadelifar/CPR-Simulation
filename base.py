@@ -21,10 +21,6 @@ class Tile:
             self.gold -= 1
         else:
             raise ValueError("No gold on this tile.")
-
-    def get_tuple(self):
-        """Return the (x, y) coordinate of the tile."""
-        return (self.position.x, self.position.y)
     
     def add_robot(self, robot):
         """Add a robot onto the tile"""
@@ -40,12 +36,18 @@ class Tile:
         else:
             raise ValueError("Robot not on tile!")
 
-def turn_cw(sense):
-    """Turn (robot's senses) clockwise."""
-    x,y = sense
-    return (y,-x)
-
-def turn_ccw(sense):
-    """Turn (robot's senses) counterclockwise"""
-    x, y = sense
+# Turn clockwise
+def turn_cw(vector):
+    x,y = vector
     return (-y,x)
+
+# In Pygame (0,0) is top-left; y increases downwards; x increases rightwards)
+DIR_VECT = {Dir.NORTH:(0,-1), Dir.EAST:(1,0), Dir.SOUTH:(0,1), Dir.WEST:(-1,0)}
+
+# Relative sensing vectors
+NORTH_SENSE = [(-1,-1),(0,-1),(1,-1),(-2,-2),(-1,-2),(0,-2),(1,-2),(2,-2)]
+EAST_SENSE = [turn_cw(v) for v in NORTH_SENSE]
+SOUTH_SENSE = [turn_cw(v) for v in EAST_SENSE]
+WEST_SENSE = [turn_cw(v) for v in SOUTH_SENSE]
+
+SENSE_VECT = {Dir.NORTH: NORTH_SENSE, Dir.EAST: EAST_SENSE, Dir.SOUTH: SOUTH_SENSE, Dir.WEST: WEST_SENSE}

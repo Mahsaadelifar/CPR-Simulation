@@ -11,16 +11,19 @@ class Grid:
         
         # Place gold randomly on the grid
         for _ in range(GOLDS):
-            x,y = random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)
-            self.tiles[(x, y)].add_gold()
+            while True:
+                x,y = random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)
+                if (x,y) not in [(0, 0), (GRID_SIZE - 1, GRID_SIZE - 1)]:
+                    break
+            self.tiles[(x,y)].add_gold()
         
-        # Set deposit locations (Team based)
-        self.tiles[(0, 0)].set_deposit() # RED
-        self.tiles[(GRID_SIZE - 1, GRID_SIZE - 1)].set_deposit() # BLUE
-        
+        for pos in [(0,0), (GRID_SIZE-1, GRID_SIZE-1)]: # No distinction between teams yet
+            self.tiles[pos].set_deposit()
+
         self.robots = [] # Robots currently on the grid
 
-    def add_robot(self, robot):
+    def add_robot(self, robot, pos):
         """Add a robot to the grid."""
         self.robots.append(robot)
+        self.tiles[pos].add_robot(robot)
 
