@@ -13,13 +13,14 @@ Message types:
     - "pickup_gold": request for partner to pick up gold at (x,y)
     - "deposit_gold": request for partner to deposit gold at (x,y)
 """
-message_types = {0: "moving_to", 2: "please_help", 4: "im_helping", 5: "partnered", 8: "pickup_gold", 9: "deposit_gold"}
+
+message_types = {"0": "moving_to", "2": "please_help", "4": "im_helping", "5": "partnered", "8": "pickup_gold", "9": "deposit_gold"}
 
 class Message:
-    def __init__(self, id: int, content: str, timer: int, proposer: 'Robot', acceptor: 'Robot'):
+    def __init__(self, id: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=(ROBOTS_PER_TEAM-1)):
         self.id = id                # 3 digits; in the format of "timestep, timestep, type"
         self.content = content      # (x,y)
-        self.timer = timer          # counts down to when message can be read, i.e. has been sent to all relevant robots
+        self.countdown = countdown  # counts down to when message can be read, i.e. has been sent to all relevant robots
         self.proposer = proposer    # robot who sent the message
         self.acceptor = acceptor    # robot who accepts the message
 
@@ -31,15 +32,18 @@ class KB:
         self.read_messages = {message: [] for message in message_types.values()}  # messages read; {message_type: [Message, ...]}
     
     def receive_message(self, message: Message):
-        self.received_messages[message.id[2]].append(message)
+        self.received_messages[message_types[message.id[2]]].append(message)
     
     def read_message(self):
         for mtype, messages in self.received_messages.items():
             if messages:
-                msg = messages.pop(0)
-                if msg.timer == 0:
-                    self.read_messages[mtype].append(msg)
-
+                msg = messages.pop(0) # REMOVES the message from received_messages
+                if msg.countdown == 0:
+                    self.read_messages[mtype].append(msg) # throws message into read_messages
+                else:
+                    msg.countdown -= 1 # counts down each time the message is read by a robot (the message is the same entity for all robots)
+                    self.received_messages[mtype].append(msg) # puts the message back into received_messages if countdown > 0
+        
 class Robot:
     next_id = 1
 
@@ -79,3 +83,23 @@ class Robot:
             self.grid.tiles[tuple(self.pos)].add_robot(self)
         else:
             pass
+
+    def receive_message(self, message: Message):
+        """Receive a message and store it in the KB."""
+        self.kb.receive_message(message)
+    
+    def read_message(self):
+        """Read received messages in the KB."""
+        self.kb.read_message()
+
+    def send_message(self, message: Message, acceptor: 'Robot'):
+        """Send a message to all robots within a certain range."""
+        message.proposer = self
+        message.acceptor = acceptor
+        acceptor.receive_message(message)
+
+    def send_to_all(self, message: Message):
+        """Send a message to all robots (within the same team) on the grid."""
+        for robot in self.grid.robots:
+            if robot != self and robot.team == self.team:
+                self.send_message(message, robot)

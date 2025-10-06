@@ -4,8 +4,8 @@ import sys
 from collections import defaultdict
 
 from config import *
-from robot import Robot
-from grid import Grid
+from robot import *
+from grid import *
 from base import *
 
 # Functions here run at every simulation step
@@ -57,6 +57,15 @@ class Simulation:
                 cy = gy * CELL_SIZE + CELL_SIZE // 2 + SCORES_HEIGHT
                 pygame.draw.circle(screen, YELLOW, (cx, cy), CELL_SIZE // 6)
                 screen.blit(txt, txt.get_rect(center = (cx, cy)))
+
+    def check(self):
+        for (gx, gy), tile in self.grid.tiles.items():
+            teams = {Team.RED: [], Team.BLUE: []}
+            for r in tile.robots:
+                teams[r.team].append(r)
+
+            if len(teams[Team.RED]) > 2 or len(teams[Team.BLUE]) >2:
+                print(ANSI.RED.value + f"Error: More than 2 robots of the same team on tile {(gx,gy)}" + ANSI.RESET.value)
 
     def draw_robots(self, screen):
         for (gx, gy), tile in self.grid.tiles.items():
@@ -112,9 +121,8 @@ class Simulation:
 
     def step(self):
         for robot in self.grid.robots:
-            robot.sense()
-            print(f"Robot {robot.id} at {robot.pos} facing {robot.dir} senses: {robot.kb.sensed}")
-            if random.random() < 0.5:
-                robot.turn(random.choice(list(Dir)))
-            else:
-                robot.move()
+            robot.read_message()
+            for message in robot.kb.received_messages["moving_to"]:
+                print(f"{robot.id} received message: '{message.id}, {message.content}, {message.countdown}'")
+            for message in robot.kb.read_messages["moving_to"]:
+                print(f"{robot.id} read message: '{message.id}, {message.content}, {message.countdown}'")
