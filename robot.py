@@ -18,7 +18,7 @@ message_types = {"0": "moving_to", "2": "please_help", "4": "im_helping", "5": "
 
 class Message:
     def __init__(self, id: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=(ROBOTS_PER_TEAM-1)):
-        self.id = id                # 3 digits; in the format of "timestep, timestep, type"
+        self.id = id                # 4 digits; in the format of "timestep, timestep, timestep, type"
         self.content = content      # (x,y)
         self.countdown = countdown  # counts down to when message can be read, i.e. has been sent to all relevant robots
         self.proposer = proposer    # robot who sent the message
@@ -32,7 +32,7 @@ class KB:
         self.read_messages = {message: [] for message in message_types.values()}  # messages read; {message_type: [Message, ...]}
     
     def receive_message(self, message: Message):
-        self.received_messages[message_types[message.id[2]]].append(message)
+        self.received_messages[message_types[message.id[3]]].append(message)
     
     def read_message(self):
         for mtype, messages in self.received_messages.items():
@@ -54,7 +54,7 @@ class Robot:
       self.pos = position # [x,y]
       self.dir = direction
       self.timer = timer
-      self.planned_move = None
+      self.decision = None # [decision, position]
       self.carrying = False
       self.kb = KB(deposit = deposit)
 
@@ -75,8 +75,7 @@ class Robot:
 
     def move(self):
         """Move forward in the direction it's facing."""
-        new_x = self.pos[0] + DIR_VECT[self.dir][0]
-        new_y = self.pos[1] + DIR_VECT[self.dir][1]
+        new_x, new_y = self.next_position()
         if 0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE:
             self.grid.tiles[tuple(self.pos)].remove_robot(self)
             self.pos = [new_x, new_y]
@@ -103,3 +102,30 @@ class Robot:
         for robot in self.grid.robots:
             if robot != self and robot.team == self.team:
                 self.send_message(message, robot)
+
+    def next_position(self):
+        new_x = self.pos[0] + DIR_VECT[self.dir][0]
+        new_y = self.pos[1] + DIR_VECT[self.dir][1]
+        if new_x < 0 or new_x >= GRID_SIZE or new_y < 0 or new_y >= GRID_SIZE:
+            return self.pos
+        return [new_x, new_y]
+    
+    def planned_move(self, timestep):
+        if self.decision and self.decision[0] == "moving_to":
+            if self.plan(timestep):
+                self.move()
+            else:
+                pass
+    
+    def plan(self, timestep):
+        # CURRENTLY ONLY MOVE!!!!
+        for message in self.kb.read_messages["moving_to"]:
+            if message.content == tuple(self.next_position()):
+                self.decision = ["moving_to", self.pos]
+                self.send_to_all(Message(id=f"{timestep}0", content=tuple(self.pos)))
+                return False
+        self.decision = ["moving_to", self.next_position()] # also includes the position it's STAYING at
+        self.send_to_all(Message(id=f"{timestep}0", content=tuple(self.next_position())))
+        return True
+
+                

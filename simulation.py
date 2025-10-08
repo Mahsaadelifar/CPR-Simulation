@@ -13,6 +13,7 @@ class Simulation:
     def __init__(self):
         self.grid = Grid()
         self.scores = {Team.RED: 0, Team.BLUE: 0}
+        self.timestep = 0
 
         self.initialize_robots()
 
@@ -66,6 +67,9 @@ class Simulation:
 
             if len(teams[Team.RED]) > 2 or len(teams[Team.BLUE]) >2:
                 print(ANSI.RED.value + f"Error: More than 2 robots of the same team on tile {(gx,gy)}" + ANSI.RESET.value)
+                print("Robots on tile:")
+                for robot in tile.robots:
+                    print(f"Robot ID: {robot.id}")
 
     def draw_robots(self, screen):
         for (gx, gy), tile in self.grid.tiles.items():
@@ -121,8 +125,16 @@ class Simulation:
 
     def step(self):
         for robot in self.grid.robots:
-            robot.read_message()
-            for message in robot.kb.received_messages["moving_to"]:
-                print(f"{robot.id} received message: '{message.id}, {message.content}, {message.countdown}'")
-            for message in robot.kb.read_messages["moving_to"]:
-                print(f"{robot.id} read message: '{message.id}, {message.content}, {message.countdown}'")
+            if random.random() < 0.5:
+                robot.turn(random.choice(list(Dir)))
+            robot.plan(str(self.timestep).zfill(3))
+
+        for _ in range(ROBOTS_PER_TEAM-1):  # Wait for countdown to reach 0
+            for robot in self.grid.robots:
+                robot.read_message()
+        
+        for robot in self.grid.robots:
+            robot.planned_move((str(self.timestep).zfill(3)))
+            
+        self.timestep += 1
+        self.check()
