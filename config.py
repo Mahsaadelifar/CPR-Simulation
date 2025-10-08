@@ -11,13 +11,13 @@ class Dir(Enum):
     WEST = 3
 
 # Values
-GRID_SIZE = 20
+GRID_SIZE = 5
 CELL_SIZE = 45
 SCORES_HEIGHT = 30
 X_WINDOW_SIZE = GRID_SIZE * CELL_SIZE
 Y_WINDOW_SIZE = GRID_SIZE * CELL_SIZE + SCORES_HEIGHT
 FPS = 2
-ROBOTS_PER_TEAM = 10
+ROBOTS_PER_TEAM = 3
 GOLDS = 3
 
 # Colors
@@ -33,3 +33,5 @@ DEPOSIT_COL = (100, 200, 100)
 class ANSI(Enum):
     RESET = "\u001b[0m"
     RED = "\u001b[31m"
+    GREEN = "\u001b[32m"
+    YELLOW = "\u001b[33m"

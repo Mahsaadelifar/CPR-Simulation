@@ -36,13 +36,12 @@ class KB:
     
     def read_message(self):
         for mtype, messages in self.received_messages.items():
-            if messages:
-                msg = messages.pop(0) # REMOVES the message from received_messages
-                if msg.countdown == 0:
-                    self.read_messages[mtype].append(msg) # throws message into read_messages
+            for message in messages[:]:
+                if message.countdown == 0:
+                    self.read_messages[mtype].append(message) # throws message into read_messages
+                    self.received_messages[mtype].remove(message) # removes message from received_messages
                 else:
-                    msg.countdown -= 1 # counts down each time the message is read by a robot (the message is the same entity for all robots)
-                    self.received_messages[mtype].append(msg) # puts the message back into received_messages if countdown > 0
+                    message.countdown -= 1
         
 class Robot:
     next_id = 1

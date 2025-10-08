@@ -125,14 +125,20 @@ class Simulation:
 
     def step(self):
         for robot in self.grid.robots:
+            for message in robot.kb.received_messages["moving_to"]:
+                if robot.team == Team.RED:
+                    print(ANSI.YELLOW.value + f"Robot {robot.id} received message: {message.id} {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
+            for message in robot.kb.read_messages["moving_to"]:
+                if robot.team == Team.RED:
+                    print(ANSI.GREEN.value + f"Robot {robot.id} read message: {message.id} {message.content}, proposer: {message.proposer.id}" + ANSI.RESET.value)
             if random.random() < 0.5:
                 robot.turn(random.choice(list(Dir)))
             robot.plan(str(self.timestep).zfill(3))
-
-        for _ in range(ROBOTS_PER_TEAM-1):  # Wait for countdown to reach 0
-            for robot in self.grid.robots:
-                robot.read_message()
         
+        for robot in self.grid.robots:
+            robot.read_message()
+        print("===============================")
+
         for robot in self.grid.robots:
             robot.planned_move((str(self.timestep).zfill(3)))
             

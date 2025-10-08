@@ -15,7 +15,7 @@ def main():
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                sim.step()  # currently, tells all robots to attempt reading messages and print out their knowledge base
+                sim.step()
         sim.draw(screen)
         pygame.display.flip()
 
