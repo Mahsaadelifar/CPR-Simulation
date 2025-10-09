@@ -59,6 +59,8 @@ class Robot:
       self.timer = timer
       self.decision = None # [decision, position]
       self.carrying = False
+      self.partner_id = None #ID for partner robot carrying gold together
+      self.target_position = None # [x,y] target position robot is heading to
       self.kb = KB(deposit = deposit)
 
     def sense(self):
@@ -67,7 +69,7 @@ class Robot:
             tile = self.grid.tiles[(self.pos[0]+dx, self.pos[1]+dy)] if (self.pos[0]+dx, self.pos[1]+dy) in self.grid.tiles else None
             if tile and (self.pos[0]+dx, self.pos[1]+dy) not in self.kb.sensed:
                 objects = {}
-                objects["deposit"] = tile.deposit
+                objects["deposit"] = tile.deposit 
                 objects["gold"] = tile.gold
                 objects["robots"] = tile.robots
                 self.kb.sensed[(self.pos[0]+dx, self.pos[1]+dy)] = objects
@@ -120,10 +122,11 @@ class Robot:
     def plan(self, timestep):
         # CURRENTLY ONLY MOVE!!!!
         for message in self.kb.read_messages["moving_to"]:
-            if message.content == tuple(self.next_position()):
+            if message.content == tuple(self.next_position()): #if another robot tries to move to its planned position it stays whre it is 
                 self.decision = ["moving_to", tuple(self.pos)]
-        self.decision = ["moving_to", tuple(self.next_position())]
+        self.decision = ["moving_to", tuple(self.next_position())] #if no robot is coming, just move straight
         self.send_to_all(Message(id=f"{timestep}0", content=self.decision[1]))
+
 
     def execute(self):
         # PLAN FIRST in simulation step
