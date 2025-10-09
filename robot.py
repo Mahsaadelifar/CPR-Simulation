@@ -59,7 +59,8 @@ class Robot:
       self.timer = timer
       self.decision = None # [decision, position]
       self.carrying = False
-      self.partner_id = None 
+      self.partner_id = None #ID for partner robot carrying gold together
+      self.target_position = None # [x,y] target position robot is heading to
       self.kb = KB(deposit = deposit)
 
     def sense(self):
@@ -124,12 +125,36 @@ class Robot:
 
         return(robots_at_grid, teammates_at_grid, gold_at_grid)
 
-    def carry_with_partner(self):
+    def carry_with_partner(self): #where should we call this function?
         gridrobots, gridteammates, gridgold = self.sense_tile_values()
         if (gridteammates == 1) and (gridgold> 0): #if we DO have a partner and gold at the tile is greater than 0
             self.partner_id = gridteammates[0].id
             self.carrying = True
+    
+    def axis_dist(a,b): #a and b are tuples (x1,y1), (x2, y2)
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    
+    def closest_gold(self):
+        gold_positions = [
+            pos for pos, info in self.kb.sensed.items()
+            if info.get("gold", 0) > 0  ]
 
+        if not gold_positions:
+            return None
+        
+        closest = min(gold_positions, key=lambda pos: self.axis_dist(tuple(self.pos), pos))
+        return closest
+        
+
+    def set_target(self):
+        if self.carrying and (self.partner_id != None):
+            self.target = self.KB.deposit
+        else:
+
+            self.target = self.closest_gold()
+        
+
+        
 
     
     def plan(self, timestep):
