@@ -8,7 +8,6 @@ from robot import *
 from grid import *
 from base import *
 
-# Functions here run at every simulation step
 class Simulation:
     def __init__(self):
         self.grid = Grid()
@@ -124,6 +123,27 @@ class Simulation:
         self.draw_robots(screen)
 
     def step(self):
+        timestep = str(self.timestep).zfill(3)
+
+        for robot in self.grid.robots:
+            if random.random() < 0.5:
+                robot.turn(random.choice(list(Dir)))
+            robot.plan(timestep)
+        
+        for robot in self.grid.robots:
+            robot.read_message()
+        for robot in self.grid.robots:
+            robot.read_message() # to ensure that all robots have read the messages of this timestep (otherwise earlier ones wouldn't have read)
+
+        for robot in self.grid.robots:
+            robot.execute()
+            robot.clean_messages(timestep)
+        
+        print("Timestep:" + str(self.timestep).zfill(3))
+        self.check_messages()
+        self.timestep += 1
+
+    def check_messages(self):
         for robot in self.grid.robots:
             for message in robot.kb.received_messages["moving_to"]:
                 if robot.team == Team.RED:
@@ -131,16 +151,4 @@ class Simulation:
             for message in robot.kb.read_messages["moving_to"]:
                 if robot.team == Team.RED:
                     print(ANSI.GREEN.value + f"Robot {robot.id} read message: {message.id} {message.content}, proposer: {message.proposer.id}" + ANSI.RESET.value)
-            if random.random() < 0.5:
-                robot.turn(random.choice(list(Dir)))
-            robot.plan(str(self.timestep).zfill(3))
-        
-        for robot in self.grid.robots:
-            robot.read_message()
-        print("===============================")
-
-        for robot in self.grid.robots:
-            robot.planned_move((str(self.timestep).zfill(3)))
-            
-        self.timestep += 1
-        self.check()
+        print("=================")

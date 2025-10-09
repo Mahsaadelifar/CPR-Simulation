@@ -28,20 +28,24 @@ class KB:
     def __init__(self, deposit):
         self.deposit = deposit  # deposit tile
         self.sensed = {}        # {tile: [object(s)]}
-        self.received_messages = {message: [] for message in message_types.values()}  # messages received (but not read); {message_type: [Message, ...]}
-        self.read_messages = {message: [] for message in message_types.values()}  # messages read; {message_type: [Message, ...]}
+        self.received_messages = {mtype: [] for mtype in message_types.values()}  # messages received (but not read); {message_type: [Message, ...]}
+        self.read_messages = {mtype: [] for mtype in message_types.values()}  # messages read; {message_type: [Message, ...]}
     
     def receive_message(self, message: Message):
-        self.received_messages[message_types[message.id[3]]].append(message)
+        if message not in self.received_messages[message_types[message.id[-1]]] and message not in self.read_messages[message_types[message.id[-1]]]:
+            self.received_messages[message_types[message.id[-1]]].append(message)
     
     def read_message(self):
         for mtype, messages in self.received_messages.items():
             for message in messages[:]:
-                if message.countdown == 0:
-                    self.read_messages[mtype].append(message) # throws message into read_messages
+                if message.countdown <= 1:
+                    self.read_messages[mtype].append(message) # throws a copy of the message into read_messages
                     self.received_messages[mtype].remove(message) # removes message from received_messages
                 else:
                     message.countdown -= 1
+    
+    def clean_moving_to_messages(self, timestep):
+        self.read_messages["moving_to"] = [message for message in self.read_messages["moving_to"] if message.id[0:3] >= timestep]
         
 class Robot:
     next_id = 1
@@ -101,6 +105,9 @@ class Robot:
         for robot in self.grid.robots:
             if robot != self and robot.team == self.team:
                 self.send_message(message, robot)
+    
+    def clean_messages(self, timestep):
+        self.kb.clean_moving_to_messages(timestep)
 
     def next_position(self):
         new_x = self.pos[0] + DIR_VECT[self.dir][0]
@@ -109,22 +116,18 @@ class Robot:
             return self.pos
         return [new_x, new_y]
     
-    def planned_move(self, timestep):
-        if self.decision and self.decision[0] == "moving_to":
-            if self.plan(timestep):
-                self.move()
-            else:
-                pass
-    
     def plan(self, timestep):
         # CURRENTLY ONLY MOVE!!!!
         for message in self.kb.read_messages["moving_to"]:
             if message.content == tuple(self.next_position()):
-                self.decision = ["moving_to", self.pos]
-                self.send_to_all(Message(id=f"{timestep}0", content=tuple(self.pos)))
-                return False
-        self.decision = ["moving_to", self.next_position()] # also includes the position it's STAYING at
-        self.send_to_all(Message(id=f"{timestep}0", content=tuple(self.next_position())))
-        return True
+                self.decision = ["moving_to", tuple(self.pos)]
+        self.decision = ["moving_to", tuple(self.next_position())]
+        self.send_to_all(Message(id=f"{timestep}0", content=self.decision[1]))
+
+    def execute(self):
+        # PLAN FIRST in simulation step
+        if self.decision and self.decision[0] == "moving_to":
+            self.move()
+            
 
                 
