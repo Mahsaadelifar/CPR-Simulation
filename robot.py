@@ -62,6 +62,8 @@ class Robot:
       self.partner_id = None #ID for partner robot carrying gold together
       self.target_position = None # [x,y] target position robot is heading to
       self.kb = KB(deposit = deposit)
+      self.partner = None #robot object partner NEED TO FIX CODE SO WE CAN REMOVE THIS
+      self.target = None
 
     def sense(self):
         """Sense the surrounding tiles and update KB."""
@@ -72,11 +74,18 @@ class Robot:
                 objects["deposit"] = tile.deposit 
                 objects["gold"] = tile.gold
                 objects["robots"] = tile.robots
-                self.kb.sensed[(self.pos[0]+dx, self.pos[1]+dy)] = objects
+                self.kb.sensed[(self.pos[0]+dx, self.pos[1]+dy)] = objects #WHY IS IT NOT SENSING????
 
-    def turn(self, direction):
-        """Turn to face a new direction."""
-        self.dir = direction
+    def turn(self, turn_dir): #convert left or right into a specific direction
+        dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
+        curr_index = dir_order.index(self.dir)
+
+        if turn_dir == "right":
+            self.dir = dir_order[(curr_index + 1) % 4]
+        elif turn_dir == "left":
+            self.dir = dir_order[(curr_index - 1) % 4]
+        else:
+            raise ValueError("you can only turn left or right girl'")
 
     def move(self):
         """Move forward in the direction it's facing."""
@@ -97,7 +106,7 @@ class Robot:
         self.kb.read_message()
 
     def send_message(self, message: Message, acceptor: 'Robot'):
-        """Send a message to all robots within a certain range."""
+        """Send a message to all robots within a certain range.""" #what is that range girl
         message.proposer = self
         message.acceptor = acceptor
         acceptor.receive_message(message)
@@ -106,6 +115,7 @@ class Robot:
         """Send a message to all robots (within the same team) on the grid."""
         for robot in self.grid.robots:
             if robot != self and robot.team == self.team:
+                message.acceptor = robot #added to change acceptor to each robot
                 self.send_message(message, robot)
     
     def clean_messages(self, timestep):
@@ -118,125 +128,236 @@ class Robot:
             return self.pos
         return [new_x, new_y]
     
-    '''
+    def sense_tile_values(self):
+        robots_at_grid = self.kb.sensed.get(tuple(self.pos), {}).get("robots", [])
+        teammates_at_grid = [robot for robot in robots_at_grid if robot!=self]
+        gold_at_grid = self.kb.sensed.get(tuple(self.pos), {}).get("gold", 0)
+
+        return(robots_at_grid, teammates_at_grid, gold_at_grid)
+
+    def pair_up(self, gridteammates, gridgold): #grid robots is a list of teammates on the grid, gridgold is number og gold on the grid
+        if (gridteammates == 1) and (gridgold> 0): #if we DO have a partner and gold at the tile is greater than 0
+            self.partner = gridteammates[0]
+            self.partner_id = gridteammates[0].id
+            self.carrying = True
+
+    
+    def axis_dist(self, a,b): #a and b are tuples (x1,y1), (x2, y2)
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+    
+    def closest_gold(self):
+        gold_positions = [
+            pos for pos, info in self.kb.sensed.items()
+            if info.get("gold", 0) > 0  ]
+
+        if not gold_positions:
+            return None
+        
+        closest = min(gold_positions, key=lambda pos: self.axis_dist(tuple(self.pos), pos))
+        return closest
+
+
+    def set_target(self):
+        help_requests = self.kb.read_messages.get("please_help", [])
+        #if you have a partner and gold, your target is the deposit
+        if self.carrying and (self.partner_id != None):
+            self.target = tuple(self.KB.deposit)
+
+        #otherwise, respond to help requests
+        elif help_requests:
+            help_message = help_requests[0] #currently selecting first help message recieved, should ideally loop through and select the closest message
+            self.target = help_message.content
+
+            help_response = Message(
+                id = f"{self.timestep}4",
+                content = self.target,
+                proposer = self,
+                acceptor = None #will be set by the send_to_all function later
+                )
+            
+            self.send_to_all(help_response)
+            return
+    
+        
+        else:
+            #if nothing else to do, target is closest gold
+            if self.closest_gold():
+                self.target = self.closest_gold()
+            
+            else: #if no gold in sight move forward 1
+                self.target = self.next_position()
+
+
+    def turn_toward(self, target_direction):
+        if self.dir == target_direction:
+            return "wait"
+        
+        #if not facing right direction, TURN!!!
+        dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
+        curr_index = dir_order.index(self.dir) #index of current direction
+        right_dir = dir_order[(curr_index + 1) % 4]
+        left_dir  = dir_order[(curr_index - 1) % 4]
+
+        if target_direction == right_dir:
+            return "turn_right"
+        elif target_direction == left_dir:
+            return "turn_left"
+        else:
+            # Opposite direction
+            return "turn_right"
+        
+
+
+    def next_move_to_target(self):
+        #function that decides best next move from these options: move forward, turn right, turn left, deposit
+        #based on self.target where self.target is a tuple of coordinates (x,y)
+
+        #deposit at target (maybe don't need here and override it in the plan function)
+        if (tuple(self.pos) == self.target) and self.carrying:
+            return "deposit"
+    
+        #diff in dist of each axis
+        to_move_x = self.target[0] - self.pos[0]
+        to_move_y = self.target[1] - self.pos[1]
+
+        if abs(to_move_x) > abs(to_move_y):
+            target_dir = Dir.EAST if to_move_x > 0 else Dir.WEST
+        else:
+            target_dir = Dir.SOUTH if to_move_y > 0 else Dir.NORTH
+
+        #move if correctly oreintatededded
+        if self.dir == target_dir:
+            return "move"
+        
+        return self.turn_toward(target_dir)
+        
+#__________________________________________________________________________
+
     def plan(self, timestep):
-        # CURRENTLY ONLY MOVE!!!!
-        for message in self.kb.read_messages["moving_to"]:
-            if message.content == tuple(self.next_position()): #if another robot tries to move to its planned position it stays whre it is 
-                self.decision = ["moving_to", tuple(self.pos)]
-        self.decision = ["moving_to", tuple(self.next_position())] #if no robot is coming, just move straight
-        self.send_to_all(Message(id=f"{timestep}0", content=self.decision[1]))
 
+        self.set_target() 
 
-    def execute(self):
-        # PLAN FIRST in simulation step
-        if self.decision and self.decision[0] == "moving_to":
-            self.move()
-     '''       
-
-    def plan(self, timestep):
-        tile = self.grid.tiles[tuple(self.pos)]
+        #tile = self.grid.tiles[tuple(self.pos)] don't think we're allowed to access it like this it has to come from the robot KB to be decntralised
+        gridrobots, gridteammates, gridgold = self.sense_tile_values()
 
         # Deposit gold if carrying and at deposit
-        if self.carrying and tile.deposit:
+        if self.carrying and (self.position == self.kb.deposit):
             self.decision = ["deposit_gold", tuple(self.pos)]
             print(f"Robot {self.id} at {self.pos} will deposit gold")
-            self.send_to_all(Message(id=f"{timestep}9", content=tuple(self.pos)))
+            #self.send_to_all(Message(id=f"{timestep}9", content=tuple(self.pos))) should send message AFTER successful execution
             return
 
         # Pickup gold if partner available
-        same_team_robots = [r for r in tile.robots if r.team == self.team and r != self]
-        if tile.gold > 0 and len(same_team_robots) >= 1 and not self.carrying:
-            self.partner = same_team_robots[0]
+        #same_team_robots = [r for r in tile.robots if r.team == self.team and r != self] 
+        self.pair_up(gridteammates,gridgold)
+        if self.partner_id != None:
             self.decision = ["pickup_gold", tuple(self.pos)]
-            print(f"Robot {self.id} at {self.pos} will pick up gold with partner {self.partner.id}")
-            self.send_to_all(Message(id=f"{timestep}8", content=tuple(self.pos)))
             return
+        #self.send_to_all(Message(id=f"{timestep}8", content=tuple(self.pos))) should send message AFTER successful execution
 
         # Coordinated move if carrying gold
-        if self.carrying and self.partner and self.partner.carrying:
-            # Pick a direction once per pair (toward deposit)
-            deposit_pos = self.kb.deposit
-            dx = deposit_pos[0] - self.pos[0]
-            dy = deposit_pos[1] - self.pos[1]
-            if abs(dx) > abs(dy):
-                new_dir = Dir.EAST if dx > 0 else Dir.WEST
-            else:
-                new_dir = Dir.SOUTH if dy > 0 else Dir.NORTH
-            self.dir = new_dir
+        if self.carrying and self.partner and self.partner.carrying and (tuple(self.pos) != self.kb.deposit):
+            #have robot with lower ID turn in place so it faces same direction as partner
+            if self.dir != self.partner.dir: #STILL NOT IDEAL CAISE WE SHOULDN'T BE ABLE TO SEE PARTNER'S DIRECTION???
+                # Lower ID aligns with higher ID
+                if self.id < self.partner_id: 
+                    self.decision = [self.turn_toward(self.partner.dir), tuple(self.pos)]
+                    print(f"Robot {self.id} turning to align with partner {self.partner_id}")
+                    return
+                else:
+                    self.decision = ["wait", tuple(self.pos)]
+                    return
+                    # higher ID robot waits while partner aligns
+            
+            #if both robots faced in the same direction, just use usual logic to calculate next move
+            self.decision = [self.next_move_to_target(), tuple(self.pos)]
             print(f"Robot {self.id} and {self.partner.id} coordinated move direction set to {self.dir.name}")
-            self.decision = ["moving_to", tuple(self.next_position())]
             return
-
-        # Normal move (random)
-        self.decision = ["moving_to", tuple(self.next_position())]
-        print(f"Robot {self.id} at {self.pos} will move to {self.next_position()}")
-        self.send_to_all(Message(id=f"{timestep}0", content=self.decision[1]))
-
+    
+        #if all else fails just do what you want
+        self.decision = [self.next_move_to_target(), tuple(self.pos)]
+        return
 
     # Updated execute with coordinated move and prints
-    def execute(self):
+    def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
 
-        if self.decision[0] == "moving_to":
+        print(f"target: {self.target}, decision: {self.decision}, position: {self.pos}")
+        print(f"sensed: {self.kb.sensed}")
+
+        if self.decision[0] == "move":
+            self.move()
+            self.sense() #sense after moving
             # Move normally or coordinated if carrying gold
-            if self.carrying and self.partner and self.partner.carrying:
-                # Check if partner moving in same direction
-                if self.next_position() == self.partner.next_position():
-                    self.move()
-                    print(f"Robot {self.id} and partner {self.partner.id} carried gold to {self.pos}")
-                else:
-                    # Drop gold
-                    tile.gold += 1
-                    print(f"Robot {self.id} and partner {self.partner.id} failed to coordinate and dropped gold at {self.pos}")
-                    self.carrying = False
-                    self.partner.carrying = False
-                    self.partner.partner = None
-                    self.partner = None
-            else:
-                self.move()
+            # if self.carrying and self.partner and self.partner.carrying:
+            #     # Check if partner moving in same direction
+            #     #if self.next_position() == self.partner.next_position(): CAN'T CHECK HERE!!!!!! UNLESS WE KNOW NEXT_POSITION FROM MESSAGES
+            #     self.move()
+            #     print(f"Robot {self.id} and partner {self.partner.id} carried gold to {self.pos}")
+            
 
         elif self.decision[0] == "pickup_gold":
-            # Check robots on the tile and split by team
-            tile_robots = tile.robots
-            teams = {Team.RED: [], Team.BLUE: []}
-            for r in tile_robots:
-                teams[r.team].append(r)
+            pass #already set stuff up in the pair_up() function previously
 
-            my_team = self.team
-            other_team = Team.RED if my_team == Team.BLUE else Team.BLUE
+        elif self.decision[0] == "wait":
+            pass
 
-            # Normal pickup: exactly 2 from my team, less than 2 from other team
-            if len(teams[my_team]) == 2 and len(teams[other_team]) < 2:
-                if tile.gold >= 1 and not self.carrying:
-                    self.carrying = True
-                    partner = [r for r in teams[my_team] if r != self][0]
-                    partner.carrying = True
-                    self.partner = partner
-                    partner.partner = self
-                    tile.gold -= 1
-                    print(f"Robot {self.id} picked up gold with partner {partner.id} at {self.pos}")
+        elif self.decision[0] == "turn_left":
+            self.turn("left")
+            self.sense() #sense after turning
+        
+        elif self.decision[0] == "turn_right":
+            self.turn("right")
+            self.sense() #sense after turning
+        
+        
+        #     # Check robots on the tile and split by team
+        #     tile_robots = tile.robots
+        #     teams = {Team.RED: [], Team.BLUE: []}
+        #     for r in tile_robots:
+        #         teams[r.team].append(r)
 
-            # Conflict pickup: 2 from each team
-            elif len(teams[Team.RED]) == 2 and len(teams[Team.BLUE]) == 2:
-                if tile.gold >= 2 and not self.carrying:
-                    self.carrying = True
-                    partner = [r for r in teams[my_team] if r != self][0]
-                    partner.carrying = True
-                    self.partner = partner
-                    partner.partner = self
-                    tile.gold -= 1
-                    print(f"Robot {self.id} picked up gold with partner {partner.id} at {self.pos} (conflict pickup)")
-                elif tile.gold < 2:
-                    print(f"Robot {self.id} failed to pick up gold due to insufficient gold (conflict)")
+        #     my_team = self.team
+        #     other_team = Team.RED if my_team == Team.BLUE else Team.BLUE
 
-            else:
-                print(f"Robot {self.id} failed to pick up gold at {self.pos}")
+        #     # Normal pickup: exactly 2 from my team, less than 2 from other team
+        #     if len(teams[my_team]) == 2 and len(teams[other_team]) < 2:
+        #         if tile.gold >= 1 and not self.carrying:
+        #             self.carrying = True
+        #             partner = [r for r in teams[my_team] if r != self][0]
+        #             partner.carrying = True
+        #             self.partner = partner
+        #             partner.partner = self
+        #             tile.gold -= 1
+        #             print(f"Robot {self.id} picked up gold with partner {partner.id} at {self.pos}")
 
-        elif self.decision[0] == "deposit_gold":
-            if self.carrying:
-                self.carrying = False
-                print(f"Robot {self.id} deposited gold at {self.pos}")
-            else:
-                print(f"Robot {self.id} tried to deposit gold but was not carrying any")
-            self.partner = None
+        #     # Conflict pickup: 2 from each team
+        #     elif len(teams[Team.RED]) == 2 and len(teams[Team.BLUE]) == 2:
+        #         if tile.gold >= 2 and not self.carrying:
+        #             self.carrying = True
+        #             partner = [r for r in teams[my_team] if r != self][0]
+        #             partner.carrying = True
+        #             self.partner = partner
+        #             partner.partner = self
+        #             tile.gold -= 1
+        #             print(f"Robot {self.id} picked up gold with partner {partner.id} at {self.pos} (conflict pickup)")
+        #         elif tile.gold < 2:
+        #             print(f"Robot {self.id} failed to pick up gold due to insufficient gold (conflict)")
+
+        #     else:
+        #         print(f"Robot {self.id} failed to pick up gold at {self.pos}")
+        # elif self.decision[0] == "deposit_gold":
+        #     if self.carrying:
+        #         self.carrying = False
+        #         print(f"Robot {self.id} deposited gold at {self.pos}")
+        #         self.partner_id = None
+        #         self.send_to_all(Message(id=f"{timestep}9", content=tuple(self.pos)))
+        #     else:
+        #         print(f"Robots {self.id} and {self.partner_id} tried to deposit gold but was not carrying any")
+        #         self.partner_id = None
+
+
+
+
+            
+

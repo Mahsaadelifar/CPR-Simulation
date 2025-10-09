@@ -64,11 +64,14 @@ class Simulation:
             for r in tile.robots:
                 teams[r.team].append(r)
 
+            # This shouldn't be checked inside simulation, simulation should allow however many robots. The robot's internal logic is the one that should be checking for this
             if len(teams[Team.RED]) > 2 or len(teams[Team.BLUE]) >2:
                 print(ANSI.RED.value + f"Error: More than 2 robots of the same team on tile {(gx,gy)}" + ANSI.RESET.value)
                 print("Robots on tile:")
                 for robot in tile.robots:
                     print(f"Robot ID: {robot.id}")
+
+
 
     def draw_robots(self, screen):
         for (gx, gy), tile in self.grid.tiles.items():
@@ -126,8 +129,9 @@ class Simulation:
         timestep = str(self.timestep).zfill(3)
 
         for robot in self.grid.robots:
-            if random.random() < 0.5:
-                robot.turn(random.choice(list(Dir)))
+            #why is some logic for robot turning in here and not inside the robot iself??
+            #if random.random() < 0.5:
+            #    robot.turn(random.choice(list(Dir)))
             robot.plan(timestep)
         
         for robot in self.grid.robots:
@@ -136,13 +140,14 @@ class Simulation:
             robot.read_message() # to ensure that all robots have read the messages of this timestep (otherwise earlier ones wouldn't have read)
 
         for robot in self.grid.robots:
-            robot.execute()
+            robot.execute(timestep)
             robot.clean_messages(timestep)
         
         print("Timestep:" + str(self.timestep).zfill(3))
         self.check_messages()
         self.timestep += 1
 
+    #maybe just make a print messages method in robot class and use it here I think this is a little odd
     def check_messages(self):
         for robot in self.grid.robots:
             for message in robot.kb.received_messages["moving_to"]:
