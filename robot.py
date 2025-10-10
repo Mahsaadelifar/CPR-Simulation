@@ -2,58 +2,89 @@ import random
 import math
 from config import *
 from base import *
-from grid import *
 
 """
 Message types:
-    - "moving_to": proposer is moving to (x,y)
     - "please_help": request for nearby robots to come to (x,y)
-    - "im_helping": acknowledgement that proposer is going to help at (x,y)
     - "partnered": acknowledgement that proposer is partnered with acceptor at (x,y)
     - "pickup_gold": request for partner to pick up gold at (x,y)
     - "deposit_gold": request for partner to deposit gold at (x,y)
+
+Partner message types:
+    - "face_direction": request for partner to face direction Dir
+    - "move_forward": request for partner to move forward
 """
 
-message_types = {"0": "moving_to", "2": "please_help", "4": "im_helping", "5": "partnered", "8": "pickup_gold", "9": "deposit_gold"}
+message_types = ["please_help", "partnered", "pickup_gold", "deposit_gold"]
+partner_message_types = ["face_direction", "move_forward"]
 
 class Message:
-    def __init__(self, id: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=(ROBOTS_PER_TEAM-1)):
-        self.id = id                # 4 digits; in the format of "timestep, timestep, timestep, type"
+    def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=1):
+        self.timestep = timestep    # timestep when message was sent
+        self.mtype = mtype          # message type
         self.content = content      # (x,y)
-        self.countdown = countdown  # counts down to when message can be read, i.e. has been sent to all relevant robots !!! WILL NEED TO FIX
+        self.countdown = countdown  # counts down to when message can be read, e.g. in the next timestep
         self.proposer = proposer    # robot who sent the message
         self.acceptor = acceptor    # robot who accepts the message
+    
+    def __eq__(self, other):
+        return (self.timestep == other.timestep and
+                self.mtype == other.mtype and
+                self.content == other.content and
+                self.proposer == other.proposer and
+                self.acceptor == other.acceptor)
+    
+    def copy(self):
+        return Message(timestep=self.timestep, mtype=self.mtype, content=self.content, proposer=self.proposer, acceptor=self.acceptor, countdown=self.countdown)
+
+    def decrement_countdown(self):
+        if self.countdown > 0:
+            self.countdown -= 1
 
 class KB:
     def __init__(self, deposit):
         self.deposit = deposit  # deposit tile
         self.sensed = {}        # {tile: [object(s)]}
-        self.received_messages = {mtype: [] for mtype in message_types.values()}  # messages received (but not read); {message_type: [Message, ...]}
-        self.read_messages = {mtype: [] for mtype in message_types.values()}  # messages read; {message_type: [Message, ...]}
+        
+        self.received_messages = {mtype: [] for mtype in message_types}                   # messages received (but not read); {message_type: [Message, ...]}
+        self.read_messages = {mtype: [] for mtype in message_types}                       # messages read; {message_type: [Message, ...]}
+        
+        self.received_partner_messages = {pmtype: [] for pmtype in partner_message_types} # partner messages received (but not read); {message_type: [Message, ...]}
+        self.read_partner_messages = {pmtype: [] for pmtype in partner_message_types}     # partner messages read; {message_type: [Message, ...]}
     
     def receive_message(self, message: Message):
-        if message not in self.received_messages.get(message_types[message.id[-1]]) and message not in self.read_messages.get(message_types[message.id[-1]]):
-            self.received_messages[message_types[message.id[-1]]].append(message)
+        if message.mtype not in message_types: # partner messages
+            if message not in self.received_partner_messages.get(message.mtype) and message not in self.read_partner_messages.get(message.mtype):
+                self.received_partner_messages[message.mtype].append(message.copy()) # stores a copy, so that countdown can be delayed
+        else: # regular messages
+            if message not in self.received_messages.get(message.mtype) and message not in self.read_messages.get(message.mtype):
+                self.received_messages[message.mtype].append(message.copy())
     
-    def read_message(self): # !!! WILL NEED TO FIX
+    def read_message(self):
         for mtype, messages in self.received_messages.items():
-            for message in messages[:]:
-                if message.countdown <= 1:
-                    self.read_messages[mtype].append(message) # throws a copy of the message into read_messages
-                    self.received_messages[mtype].remove(message) # removes message from received_messages
-                else:
-                    message.countdown -= 1
-        
+            for message in messages:
+                message.decrement_countdown()
+                if message.countdown == 0:
+                    self.read_messages[mtype].append(message)
+                    messages.remove(message)
+        for pmtype, messages in self.received_partner_messages.items():
+            for message in messages:
+                message.decrement_countdown()
+                if message.countdown == 0:
+                    self.read_partner_messages[pmtype].append(message)
+                    messages.remove(message)
+   
 class Robot:
     next_id = 1
 
-    def __init__(self, grid: Grid, team: Team, position: list, direction: Dir, deposit: list):
+    def __init__(self, grid: Grid, team: Team, position: list, direction: Dir, deposit: list, timestep: int = 0):
       self.grid = grid
       self.id = Robot.next_id; Robot.next_id += 1
       self.team = team
       self.pos = position # [x,y]
       self.dir = direction
       self.kb = KB(deposit = deposit) # !!! might have a better way to keep track of this
+      self.timestep = timestep # current timestep
 
       self.carrying = False # True if carrying gold
       self.decision = None # [decision, position]
@@ -224,8 +255,15 @@ class Robot:
         for robot in self.grid.robots:
             if robot != self and robot.team == self.team:
                 self.send_message(message, robot)
-   
-#__________________________________________________________________________
+
+    def send_to_partner(self, message: Message):
+        """Send a message to the partner robot."""
+        if self.partner:
+            self.send_message(message, self.partner)
+        else:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to send message to!" + ANSI.RESET.value)
+
+###__________________________________________________________________________###
 
     def plan(self):
         gridrobots, gridteammates, gridgold = self.sense_current_tile()

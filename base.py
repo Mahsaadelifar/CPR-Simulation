@@ -1,3 +1,4 @@
+import random
 from config import *
 
 class Tile:
@@ -35,6 +36,36 @@ class Tile:
             self.robots.remove(robot)
         else:
             raise ValueError("Robot not on tile!")
+
+class Grid:
+    def __init__(self):
+        self.tiles = {} # {(x,y): Tile}
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                self.tiles[(x, y)] = Tile(position=[x,y])
+        
+        # Place gold randomly on the grid
+        for _ in range(GOLDS):
+            while True:
+                x,y = random.randint(0, GRID_SIZE - 1), random.randint(0, GRID_SIZE - 1)
+                if (x,y) not in [(0, 0), (GRID_SIZE - 1, GRID_SIZE - 1)]:
+                    break
+            self.tiles[(x,y)].add_gold()
+        
+        for pos in [(0,0), (GRID_SIZE-1, GRID_SIZE-1)]:
+            self.tiles[pos].set_deposit()
+
+        self.robots = [] # Robots currently on the grid, used for visuals
+        self.scores = {Team.RED: 0, Team.BLUE: 0}
+
+    def add_robot(self, robot, pos):
+        """Add a robot to the grid."""
+        self.robots.append(robot)
+        self.tiles[pos].add_robot(robot)
+    
+    def add_score(self, team: Team):
+        """Add one point to the team's score."""
+        self.scores[team] += 1
 
 # Turn clockwise
 def turn_cw(vector):

@@ -5,13 +5,11 @@ from collections import defaultdict
 
 from config import *
 from robot import *
-from grid import *
 from base import *
 
 class Simulation:
     def __init__(self):
         self.grid = Grid()
-        self.scores = {Team.RED: 0, Team.BLUE: 0}
         self.timestep = 0
 
         self.initialize_robots()
@@ -24,8 +22,8 @@ class Simulation:
         blue_deposit_pos = [GRID_SIZE-1, GRID_SIZE-1]
         bx,by = [GRID_SIZE-2,GRID_SIZE-1]
         for i in range(ROBOTS_PER_TEAM):
-            r_robot = Robot(grid=self.grid, team=Team.RED, position=[rx,ry], direction = Dir.SOUTH, deposit = red_deposit_pos)
-            b_robot = Robot(grid=self.grid, team=Team.BLUE, position=[bx,by], direction=Dir.NORTH, deposit = blue_deposit_pos)
+            r_robot = Robot(grid=self.grid, team=Team.RED, position=[rx,ry], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+            b_robot = Robot(grid=self.grid, team=Team.BLUE, position=[bx,by], direction=Dir.NORTH, deposit = blue_deposit_pos, timestep=self.timestep)
 
             self.grid.add_robot(robot=r_robot, pos=(rx,ry))
             self.grid.add_robot(robot=b_robot, pos=(bx,by))
@@ -37,7 +35,7 @@ class Simulation:
         # Draw scores
         pygame.draw.rect(screen, WHITE, (0, 0, X_WINDOW_SIZE, SCORES_HEIGHT))
         font = pygame.font.SysFont(None,24)
-        scores = font.render(f"Scores - Red: {self.scores[Team.RED]}   Blue: {self.scores[Team.BLUE]}",True,BLACK)
+        scores = font.render(f"Scores - Red: {self.grid.scores[Team.RED]}   Blue: {self.grid.scores[Team.BLUE]}",True,BLACK)
         screen.blit(scores,(8,8))
 
         # Draw grid
@@ -57,21 +55,6 @@ class Simulation:
                 cy = gy * CELL_SIZE + CELL_SIZE // 2 + SCORES_HEIGHT
                 pygame.draw.circle(screen, YELLOW, (cx, cy), CELL_SIZE // 6)
                 screen.blit(txt, txt.get_rect(center = (cx, cy)))
-
-    def check(self):
-        for (gx, gy), tile in self.grid.tiles.items():
-            teams = {Team.RED: [], Team.BLUE: []}
-            for r in tile.robots:
-                teams[r.team].append(r)
-
-            # This shouldn't be checked inside simulation, simulation should allow however many robots. The robot's internal logic is the one that should be checking for this
-            if len(teams[Team.RED]) > 2 or len(teams[Team.BLUE]) >2:
-                print(ANSI.RED.value + f"Error: More than 2 robots of the same team on tile {(gx,gy)}" + ANSI.RESET.value)
-                print("Robots on tile:")
-                for robot in tile.robots:
-                    print(f"Robot ID: {robot.id}")
-
-
 
     def draw_robots(self, screen):
         for (gx, gy), tile in self.grid.tiles.items():
@@ -124,33 +107,15 @@ class Simulation:
 
         self.draw_grid(screen)
         self.draw_robots(screen)
-
-    #-------------------- UPDATING GRID & ROBOTS AT EACH TIMESTEP ---------------------------------------------------
-
-    def do_pickup(self, robotA, robotB, tile):
-        robotA.carrying, robotB.carrying = True
-        robotA.partner_id, robotB.partner_id = robotB.id, robotA.id
-        robotA.partner, robotB.partner = robotB, robotA
-        tile.gold -= 1
-        #IDK HOW TO ADD SCORE TO TEAM BUT I NEED TO ADD IT HERE
-
-    def do_failed_carry(self, robotA, robotB, tile):
-        robotA.carrying, robotB.carrying = False
-        robotA.partner_id, robotB.partner_id = None
-        robotA.partner, robotB.partner = None
-        tile.gold += 1
-
         
     def step(self):
-        timestep = str(self.timestep).zfill(3)
-        print("========= START OF TIMESTEP " + str(self.timestep).zfill(3) + " =========")
+        print("========= START OF TIMESTEP " + str(self.timestep) + " =========")
 
         for robot in self.grid.robots:
             robot.sense()
             robot.plan()
             robot.read_message()
-            robot.read_message()
             robot.execute()
 
-        print("========= END OF TIMESTEP " + str(self.timestep).zfill(3) + " =========")
+        print("========= END OF TIMESTEP " + str(self.timestep) + " =========")
         self.timestep += 1
