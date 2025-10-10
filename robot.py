@@ -162,6 +162,7 @@ class Robot:
 
     def set_target(self):
         help_requests = self.kb.read_messages.get("please_help", [])
+
         #if you have a partner and gold, your target is the deposit
         if self.carrying and (self.partner_id != None):
             self.target = tuple(self.kb.deposit)
@@ -217,7 +218,7 @@ class Robot:
         #based on self.target where self.target is a tuple of coordinates (x,y)
 
         #deposit at target (maybe don't need here and override it in the plan function)
-        if (tuple(self.pos) == self.target) and self.carrying:
+        if (tuple(self.pos) == self.kb.deposit) and self.carrying:
             return "deposit"
     
         #diff in dist of each axis
@@ -245,7 +246,10 @@ class Robot:
         gridrobots, gridteammates, gridgold = self.sense_tile_values()
 
         # Deposit gold if carrying and at deposit
-        if (self.carrying and (self.pos == self.kb.deposit)):
+        #print("Type of self.pos:", type(self.pos))
+        #print("Type of self.kb.deposit:", type(self.kb.deposit))
+        print(f"self.carrying:{self.carrying}")
+        if self.carrying and (self.pos == self.kb.deposit):
             self.decision = ["deposit_gold", tuple(self.pos)]
             print(f"Robot {self.id} at {self.pos} will deposit gold")
             #self.send_to_all(Message(id=f"{timestep}9", content=tuple(self.pos))) should send message AFTER successful execution
@@ -254,8 +258,7 @@ class Robot:
         # Pickup gold if partner available
         #same_team_robots = [r for r in tile.robots if r.team == self.team and r != self] 
         self.pair_up(gridteammates,gridgold)
-        
-        if self.partner_id != None and not self.carrying :
+        if self.partner_id is not None and self.carrying:
             self.decision = ["pickup_gold", tuple(self.pos)]
             return
         #self.send_to_all(Message(id=f"{timestep}8", content=tuple(self.pos))) should send message AFTER successful execution

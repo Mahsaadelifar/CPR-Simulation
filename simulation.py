@@ -171,10 +171,11 @@ class Simulation:
             #processing deposits -----------------------------------------------------------------------
             if current_tile.deposit: #check that current tile IS a deposit
                 deposits = [robot for robot, action in tile_robot_actions.items() if action == "deposit"]
-                for robot in deposits:
-                    robot.partner_id = None
-                    robot.partner = None
-                    #add score to team idk how
+                #for robot in deposits:   already set in the robot execution method
+                #    robot.partner_id = None
+                #    robot.partner = None
+
+                #    #add score to team idk how
 
                 #remove processed robots from dict
                 for robot in deposits:
@@ -256,7 +257,7 @@ class Simulation:
 
             for [RobotA, RobotB] in blue_partners:
                 #to drop, they must be facing different directions and moving. Turning doesn't matter
-                if (tile_robot_actions[RobotA] == tile_robot_actions[RobotB]) and (RobotA.dir != RobotB.dir):
+                if (tile_robot_actions.get(RobotA) == tile_robot_actions.get(RobotB)) and (RobotA.dir != RobotB.dir):
                     self.do_failed_carry(RobotA,RobotB,current_tile)
 
         
