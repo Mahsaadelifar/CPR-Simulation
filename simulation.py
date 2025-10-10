@@ -108,6 +108,22 @@ class Simulation:
         self.draw_grid(screen)
         self.draw_robots(screen)
         
+    def print_all_messages(self):
+        for robot in self.grid.robots:
+            print(ANSI.MAGENTA.value + f"Robot {robot.id} messages read:" + ANSI.RESET.value)
+            for mtype, messages in robot.kb.read_messages.items():
+                for message in messages:
+                    print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, countdown: {message.countdown}" + ANSI.RESET.value)
+        print("==============================")
+
+    def print_partner_messages(self):
+        for robot in self.grid.robots:
+            print(ANSI.CYAN.value + f"Robot {robot.id} partner messages read:" + ANSI.RESET.value)
+            for pmtype, message in robot.kb.read_partner_messages.items():
+                if message:
+                    print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, countdown: {message.countdown}" + ANSI.RESET.value)
+        print("==============================")
+
     def step(self):
         print("========= START OF TIMESTEP " + str(self.timestep) + " =========")
 
@@ -115,6 +131,7 @@ class Simulation:
             robot.sense()
             robot.plan()
             robot.read_message()
+            robot.read_message() # must read twice for all robots to update their received messages
             robot.execute()
 
         print("========= END OF TIMESTEP " + str(self.timestep) + " =========")

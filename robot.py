@@ -11,15 +11,16 @@ Message types:
     - "deposit_gold": request for partner to deposit gold at (x,y)
 
 Partner message types:
-    - "face_direction": request for partner to face direction Dir
+    - "facing_direction": declaration that the proposer is facing direction Dir
     - "move_forward": request for partner to move forward
+    = "understood": acknowledgement that partner message was understood
 """
 
 message_types = ["please_help", "partnered", "pickup_gold", "deposit_gold"]
-partner_message_types = ["face_direction", "move_forward"]
+partner_message_types = ["facing_direction", "move_forward", "understood"]
 
 class Message:
-    def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=1):
+    def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=2):
         self.timestep = timestep    # timestep when message was sent
         self.mtype = mtype          # message type
         self.content = content      # (x,y)
@@ -50,15 +51,13 @@ class KB:
         self.read_messages = {mtype: [] for mtype in message_types}                       # messages read; {message_type: [Message, ...]}
         
         self.received_partner_messages = {pmtype: [] for pmtype in partner_message_types} # partner messages received (but not read); {message_type: [Message, ...]}
-        self.read_partner_messages = {pmtype: [] for pmtype in partner_message_types}     # partner messages read; {message_type: [Message, ...]}
+        self.read_partner_messages = {pmtype: None for pmtype in partner_message_types}     # partner messages read; {message_type: [Message, ...]}
     
     def receive_message(self, message: Message):
         if message.mtype not in message_types: # partner messages
-            if message not in self.received_partner_messages.get(message.mtype) and message not in self.read_partner_messages.get(message.mtype):
-                self.received_partner_messages[message.mtype].append(message.copy()) # stores a copy, so that countdown can be delayed
+            self.received_partner_messages[message.mtype].append(message.copy()) # stores a copy, so that countdown can be delayed
         else: # regular messages
-            if message not in self.received_messages.get(message.mtype) and message not in self.read_messages.get(message.mtype):
-                self.received_messages[message.mtype].append(message.copy())
+            self.received_messages[message.mtype].append(message.copy())
     
     def read_message(self):
         for mtype, messages in self.received_messages.items():
@@ -71,7 +70,7 @@ class KB:
             for message in messages:
                 message.decrement_countdown()
                 if message.countdown == 0:
-                    self.read_partner_messages[pmtype].append(message)
+                    self.read_partner_messages[pmtype] = message # only keep the latest partner message
                     messages.remove(message)
    
 class Robot:
@@ -269,21 +268,34 @@ class Robot:
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
         self.set_target()
 
+        if not self.partner and gridgold > 0:
+            self.send_to_all(Message(timestep=self.timestep, mtype="please_help", content=tuple(self.pos), countdown=1))
+
         # Deposit gold if carrying and at deposit
         if self.carrying and (self.pos == self.kb.deposit):
             self.decision = ["deposit_gold", tuple(self.pos)]
             print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} depositing gold" + ANSI.RESET.value)
             return
         
-        if self.carrying and self.partner and self.partner.carrying and (tuple(self.pos) != self.kb.deposit): # Coordinated move if carrying gold
+        # Coordinated move with partner if carrying gold
+        if self.carrying and self.partner and self.partner.carrying and (tuple(self.pos) != self.kb.deposit):
+            self.send_to_partner(Message(timestep=self.timestep, mtype="facing_direction", content=self.dir, countdown=1))
+            partner_dir = self.kb.read_partner_messages.get("facing_direction").content if self.kb.read_partner_messages.get("facing_direction") else None
+            partner_acknowledgement = self.kb.read_partner_messages.get("understood").content if self.kb.read_partner_messages.get("understood") else None
+
             if self.dir != self.calc_target_dir(): # if not facing the right direction, turn to face the right direction
+                self.send_to_partner(Message(timestep=self.timestep, mtype="understood", content=False, countdown=1))
                 self.decision = [self.turn_toward(self.calc_target_dir()), tuple(self.pos)]
                 print(ANSI.YELLOW.value + f"Robot {self.id} turning to face deposit at {self.kb.deposit}" + ANSI.RESET.value)
                 return
-            if self.partner.dir != self.calc_target_dir() or self.partner.decision[0] == "turn_left" or self.partner.decision[0] == "turn_right": # wait for partner before each move
+            else:
+                self.send_to_partner(Message(timestep=self.timestep, mtype="understood", content=True, countdown=1))
+
+            if partner_dir != self.calc_target_dir() or not partner_acknowledgement: # wait for partner before each move
                 self.decision = ["wait", tuple(self.pos)]
                 print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} waiting to coordinate direction to {self.dir.name}" + ANSI.RESET.value)
                 return
+            
             self.decision = [self.next_move_to_target(), tuple(self.pos)]
             print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} coordinated move direction set to {self.dir.name}" + ANSI.RESET.value)
             return

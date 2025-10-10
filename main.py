@@ -16,6 +16,10 @@ def main():
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 sim.step()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
+                sim.print_partner_messages()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
+                sim.print_all_messages()
         sim.draw(screen)
         pygame.display.flip()
 
