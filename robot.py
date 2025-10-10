@@ -13,11 +13,10 @@ Message types:
 Partner message types:
     - "facing_direction": declaration that the proposer is facing direction Dir
     - "move_forward": request for partner to move forward
-    = "understood": acknowledgement that partner message was understood
 """
 
 message_types = ["please_help", "partnered", "pickup_gold", "deposit_gold"]
-partner_message_types = ["facing_direction", "move_forward", "understood"]
+partner_message_types = ["facing_direction", "move_forward"]
 
 class Message:
     def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=2):
@@ -269,7 +268,7 @@ class Robot:
         self.set_target()
 
         if not self.partner and gridgold > 0:
-            self.send_to_all(Message(timestep=self.timestep, mtype="please_help", content=tuple(self.pos), countdown=1))
+            self.send_to_all(Message(timestep=self.timestep, mtype="please_help", content=tuple(self.pos)))
 
         # Deposit gold if carrying and at deposit
         if self.carrying and (self.pos == self.kb.deposit):
@@ -279,29 +278,31 @@ class Robot:
         
         # Coordinated move with partner if carrying gold
         if self.carrying and self.partner and self.partner.carrying and (tuple(self.pos) != self.kb.deposit):
-            self.send_to_partner(Message(timestep=self.timestep, mtype="facing_direction", content=self.dir, countdown=1))
+            self.send_to_partner(Message(timestep=self.timestep, mtype="facing_direction", content=self.dir))
+
             partner_dir = self.kb.read_partner_messages.get("facing_direction").content if self.kb.read_partner_messages.get("facing_direction") else None
-            partner_acknowledgement = self.kb.read_partner_messages.get("understood").content if self.kb.read_partner_messages.get("understood") else None
 
             if self.dir != self.calc_target_dir(): # if not facing the right direction, turn to face the right direction
-                self.send_to_partner(Message(timestep=self.timestep, mtype="understood", content=False, countdown=1))
                 self.decision = [self.turn_toward(self.calc_target_dir()), tuple(self.pos)]
+                self.send_to_partner(Message(timestep=self.timestep, mtype="move_forward", content=False))
                 print(ANSI.YELLOW.value + f"Robot {self.id} turning to face deposit at {self.kb.deposit}" + ANSI.RESET.value)
                 return
-            else:
-                self.send_to_partner(Message(timestep=self.timestep, mtype="understood", content=True, countdown=1))
 
-            if partner_dir != self.calc_target_dir() or not partner_acknowledgement: # wait for partner before each move
+            if partner_dir != self.calc_target_dir(): # wait for partner before each move
                 self.decision = ["wait", tuple(self.pos)]
+                self.send_to_partner(Message(timestep=self.timestep, mtype="move_forward", content=False))
                 print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} waiting to coordinate direction to {self.dir.name}" + ANSI.RESET.value)
                 return
             
-            self.decision = [self.next_move_to_target(), tuple(self.pos)]
+            # both facing the right direction
+            self.send_to_partner(Message(timestep=self.timestep, mtype="move_forward", content=True))
+
+            self.decision = ["move_forward", tuple(self.pos)]
             print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} coordinated move direction set to {self.dir.name}" + ANSI.RESET.value)
             return
 
         if not self.carrying and (gridgold > 0): # If not carrying and there is gold at the tile
-            if self.partner: # Pickup gold if possible
+            if self.partner: # Pick up gold if possible
                 self.decision = ["pickup_gold", tuple(self.pos)]
                 print(ANSI.MAGENTA.value + f"Robot {self.id} and {self.partner.id} at {self.pos} picking up gold" + ANSI.RESET.value)
                 return
