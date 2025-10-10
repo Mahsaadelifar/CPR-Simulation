@@ -154,14 +154,14 @@ class Simulation:
                 for r in tile_robots:
                     teams[r.team].append(r)
 
-                my_team = self.team
+                my_team = robot.team
                 other_team = Team.RED if my_team == Team.BLUE else Team.BLUE
 
                 # Normal pickup: exactly 2 from my team, less than 2 from other team
                 if len(teams[my_team]) == 2 and len(teams[other_team]) < 2:
                     if tile.gold >= 1 and not robot.carrying:
-                        self.carrying = True
-                        partner = [r for r in teams[my_team] if r != self][0]
+                        #self.carrying = True
+                        partner = [r for r in teams[my_team] if r != robot][0]
                         partner.carrying = True
                         robot.partner = partner
                         partner.partner = robot
@@ -171,13 +171,13 @@ class Simulation:
                 # Conflict pickup: 2 from each team
                 elif len(teams[Team.RED]) == 2 and len(teams[Team.BLUE]) == 2:
                     if tile.gold >= 2 and not robot.carrying:
-                        robot.carrying = True
-                        partner = [r for r in teams[my_team] if r != self][0]
+                        #robot.carrying = True
+                        partner = [r for r in teams[my_team] if r != robot][0]
                         partner.carrying = True
                         robot.partner = partner
                         partner.partner = robot
                         tile.gold -= 1
-                        print(f"Robot {self.id} picked up gold with partner {partner.id} at {robot.pos} (conflict pickup)")
+                        print(f"Robot {robot.id} picked up gold with partner {partner.id} at {robot.pos} (conflict pickup)")
                     elif tile.gold < 2:
                         print(f"Robot {robot.id} failed to pick up gold due to insufficient gold (conflict)")
 
@@ -190,7 +190,8 @@ class Simulation:
                 pass
             elif action == "turn_right":
                 pass
-            elif action == "deposit":
+            elif action == "deposit_gold":
+                print(f"/n/n{robot.carrying}/n/n")
                 if robot.carrying:
                     robot.carrying = False
                     print(f"Robot {robot.id} deposited gold at {robot.pos}")
