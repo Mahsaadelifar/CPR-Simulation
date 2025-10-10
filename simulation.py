@@ -125,6 +125,8 @@ class Simulation:
         self.draw_grid(screen)
         self.draw_robots(screen)
 
+    #-------------------- UPDATING GRID & ROBOTS AT EACH TIMESTEP ---------------------------------------------------
+
     def step(self):
         timestep = str(self.timestep).zfill(3)
 
@@ -140,8 +142,65 @@ class Simulation:
             robot.read_message() # to ensure that all robots have read the messages of this timestep (otherwise earlier ones wouldn't have read)
 
         for robot in self.grid.robots:
-            robot.execute(timestep)
+            curr_tile = self.grid.tiles[tuple(robot.pos)] #is this the right way to acces it??
+            action = robot.execute(timestep)
             robot.clean_messages(timestep)
+            tile = self.grid.tiles[tuple(robot.pos)]
+
+            if action == "pickup_gold":
+                # Check robots on the tile and split by team
+                tile_robots = tile.robots
+                teams = {Team.RED: [], Team.BLUE: []}
+                for r in tile_robots:
+                    teams[r.team].append(r)
+
+                my_team = self.team
+                other_team = Team.RED if my_team == Team.BLUE else Team.BLUE
+
+                # Normal pickup: exactly 2 from my team, less than 2 from other team
+                if len(teams[my_team]) == 2 and len(teams[other_team]) < 2:
+                    if tile.gold >= 1 and not robot.carrying:
+                        self.carrying = True
+                        partner = [r for r in teams[my_team] if r != self][0]
+                        partner.carrying = True
+                        robot.partner = partner
+                        partner.partner = robot
+                        tile.gold -= 1
+                        print(f"Robot {robot.id} picked up gold with partner {partner.id} at {robot.pos}")
+
+                # Conflict pickup: 2 from each team
+                elif len(teams[Team.RED]) == 2 and len(teams[Team.BLUE]) == 2:
+                    if tile.gold >= 2 and not robot.carrying:
+                        robot.carrying = True
+                        partner = [r for r in teams[my_team] if r != self][0]
+                        partner.carrying = True
+                        robot.partner = partner
+                        partner.partner = robot
+                        tile.gold -= 1
+                        print(f"Robot {self.id} picked up gold with partner {partner.id} at {robot.pos} (conflict pickup)")
+                    elif tile.gold < 2:
+                        print(f"Robot {robot.id} failed to pick up gold due to insufficient gold (conflict)")
+
+                else:
+                    print(f"Robot {robot.id} failed to pick up gold at {robot.pos}")
+
+            elif action == "wait":
+                pass
+            elif action == "turn_left":
+                pass
+            elif action == "turn_right":
+                pass
+            elif action == "deposit":
+                if robot.carrying:
+                    robot.carrying = False
+                    print(f"Robot {robot.id} deposited gold at {robot.pos}")
+                    robot.partner_id = None
+                    robot.send_to_all(Message(id=f"{timestep}9", content=tuple(robot.pos)))
+                else:
+                    print(f"Robots {robot.id} and {robot.partner_id} tried to deposit gold but was not carrying any")
+                    robot.partner_id = None
+
+            
         
         print("Timestep:" + str(self.timestep).zfill(3))
         self.check_messages()

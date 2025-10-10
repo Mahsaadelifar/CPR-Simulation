@@ -93,7 +93,7 @@ class Robot:
         if 0 <= new_x < GRID_SIZE and 0 <= new_y < GRID_SIZE:
             self.grid.tiles[tuple(self.pos)].remove_robot(self)
             self.pos = [new_x, new_y]
-            self.grid.tiles[tuple(self.pos)].add_robot(self)
+            self.grid.tiles[tuple(self.pos)].add_robot(self) #SHOULD THIS BE IN SIMULATION.PY??????
         else:
             pass
 
@@ -164,6 +164,7 @@ class Robot:
             self.target = tuple(self.KB.deposit)
 
         #otherwise, respond to help requests
+
         elif help_requests:
             help_message = help_requests[0] #currently selecting first help message recieved, should ideally loop through and select the closest message
             self.target = help_message.content
@@ -283,7 +284,7 @@ class Robot:
         tile = self.grid.tiles[tuple(self.pos)]
 
         print(f"target: {self.target}, decision: {self.decision}, position: {self.pos}")
-        print(f"sensed: {self.kb.sensed}")
+        #print(f"sensed: {self.kb.sensed}")
 
         if self.decision[0] == "move":
             self.move()
@@ -297,18 +298,25 @@ class Robot:
             
 
         elif self.decision[0] == "pickup_gold":
-            pass #already set stuff up in the pair_up() function previously
+            return "pickup_gold" #already set stuff up in the pair_up() function previously
 
         elif self.decision[0] == "wait":
-            pass
+            return "wait"
 
         elif self.decision[0] == "turn_left":
             self.turn("left")
             self.sense() #sense after turning
+            return "turn_left"
         
         elif self.decision[0] == "turn_right":
             self.turn("right")
             self.sense() #sense after turning
+            return "turn right"
+        
+        elif self.decision[0] == "deposit":
+            self.carrying = False
+            self.partner_id = None
+            self.partner = None
         
         
         #     # Check robots on the tile and split by team
