@@ -127,81 +127,138 @@ class Simulation:
 
     #-------------------- UPDATING GRID & ROBOTS AT EACH TIMESTEP ---------------------------------------------------
 
+    def do_pickup(self, robotA, robotB, tile):
+        robotA.carrying, robotB.carrying = True
+        robotA.partner_id, robotB.partner_id = robotB.id, robotA.id
+        robotA.partner, robotB.partner = robotB, robotA
+        tile.gold -= 1
+        #IDK HOW TO ADD SCORE TO TEAM BUT I NEED TO ADD IT HERE
+
+    def do_failed_carry(self, robotA, robotB, tile):
+        robotA.carrying, robotB.carrying = False
+        robotA.partner_id, robotB.partner_id = None
+        robotA.partner, robotB.partner = None
+        tile.gold += 1
+
+        
     def step(self):
         timestep = str(self.timestep).zfill(3)
 
+        #iterate by robot to plan and execute
         for robot in self.grid.robots:
-            #why is some logic for robot turning in here and not inside the robot iself??
-            #if random.random() < 0.5:
-            #    robot.turn(random.choice(list(Dir)))
+            tile_robot_actions = {}
+            tile_actions_occur = []
+
             robot.plan(timestep)
-        
-        for robot in self.grid.robots:
             robot.read_message()
-        for robot in self.grid.robots:
-            robot.read_message() # to ensure that all robots have read the messages of this timestep (otherwise earlier ones wouldn't have read)
-
-        for robot in self.grid.robots:
-            curr_tile = self.grid.tiles[tuple(robot.pos)] #is this the right way to acces it??
-            action = robot.execute(timestep)
+            robot.read_message() #NOT SURE IF MY CHANGES MADE IT STILL CORRECT
             robot.clean_messages(timestep)
-            tile = self.grid.tiles[tuple(robot.pos)]
-
-            if action == "pickup_gold":
-                # Check robots on the tile and split by team
-                tile_robots = tile.robots
-                teams = {Team.RED: [], Team.BLUE: []}
-                for r in tile_robots:
-                    teams[r.team].append(r)
-
-                my_team = robot.team
-                other_team = Team.RED if my_team == Team.BLUE else Team.BLUE
-
-                # Normal pickup: exactly 2 from my team, less than 2 from other team
-                if len(teams[my_team]) == 2 and len(teams[other_team]) < 2:
-                    if tile.gold >= 1 and not robot.carrying:
-                        #self.carrying = True
-                        partner = [r for r in teams[my_team] if r != robot][0]
-                        partner.carrying = True
-                        robot.partner = partner
-                        partner.partner = robot
-                        tile.gold -= 1
-                        print(f"Robot {robot.id} picked up gold with partner {partner.id} at {robot.pos}")
-
-                # Conflict pickup: 2 from each team
-                elif len(teams[Team.RED]) == 2 and len(teams[Team.BLUE]) == 2:
-                    if tile.gold >= 2 and not robot.carrying:
-                        #robot.carrying = True
-                        partner = [r for r in teams[my_team] if r != robot][0]
-                        partner.carrying = True
-                        robot.partner = partner
-                        partner.partner = robot
-                        tile.gold -= 1
-                        print(f"Robot {robot.id} picked up gold with partner {partner.id} at {robot.pos} (conflict pickup)")
-                    elif tile.gold < 2:
-                        print(f"Robot {robot.id} failed to pick up gold due to insufficient gold (conflict)")
-
-                else:
-                    print(f"Robot {robot.id} failed to pick up gold at {robot.pos}")
-
-            elif action == "wait":
-                pass
-            elif action == "turn_left":
-                pass
-            elif action == "turn_right":
-                pass
-            elif action == "deposit_gold":
-                print(f"/n/n{robot.carrying}/n/n")
-                if robot.carrying:
-                    robot.carrying = False
-                    print(f"Robot {robot.id} deposited gold at {robot.pos}")
-                    robot.partner_id = None
-                    robot.send_to_all(Message(id=f"{timestep}9", content=tuple(robot.pos)))
-                else:
-                    print(f"Robots {robot.id} and {robot.partner_id} tried to deposit gold but was not carrying any")
-                    robot.partner_id = None
+            action = robot.execute(timestep)
+            #IMPORTANT: not including turns and moves because that's handled by 
+            # the execute function inside Robot class already
+            tile_robot_actions[robot] = action
+            tile_actions_occur.append(robot.pos)
+        
+        #iterate by tile to carry out actions at each tile
+        for [x,y] in tile_actions_occur:
+            current_tile = self.grid.tiles[(x,y)]
+            current_tile_robots = current_tile.robots
+            current_tile_redteam = [robot for robot in current_tile_robots if robot.team == Team.RED]
+            current_tile_blueteam = [robot for robot in current_tile_robots if robot.team == Team.BLUE]
+            current_tile_gold = current_tile.gold
 
             
+            #processing deposits -----------------------------------------------------------------------
+            if current_tile.deposit: #check that current tile IS a deposit
+                deposits = [robot for robot, action in tile_robot_actions.items() if action == "deposit"]
+                for robot in deposits:
+                    robot.partner_id = None
+                    robot.partner = None
+                    #add score to team idk how
+
+                #remove processed robots from dict
+                for robot in deposits:
+                    del tile_robot_actions[robot]
+
+            #processing pickups -----------------------------------------------------------------------
+            pickups = [robot for robot, action in tile_robot_actions.items() if action == "pickup_gold"]
+            print(f"all pickups: {pickups}]")
+            redteam_pickups = [robot for robot in pickups if robot in current_tile_redteam]
+            blueteam_pickups = [robot for robot in pickups if robot in current_tile_blueteam]
+            print(f"redteam pickps: {redteam_pickups}")
+            print(f"blueteam pickps: {redteam_pickups}")
+            
+            red_pickup_valid = (len(set(redteam_pickups)) == 2)
+            blue_pickup_valid = (len(set(blueteam_pickups)) == 2)
+
+            #both teams valid and are able to pick up at the same time
+            if red_pickup_valid and blue_pickup_valid and current_tile.gold > 1:
+                self.do_pickup(redteam_pickups[0],redteam_pickups[1],current_tile)
+                self.do_pickup(blueteam_pickups[0],blueteam_pickups[1],current_tile)
+            #both teams are valid but there is not enough gold to pick up at the same time
+            elif red_pickup_valid and blue_pickup_valid and current_tile.gold <= 1:
+                print(f"PICKUP FAILURE: both teams failed pickup at {(x,y)}, not enough gold present")
+
+            #only red team valid and enough gold
+            elif red_pickup_valid and (not blue_pickup_valid) and current_tile.gold > 0:
+                print(f"PICKUP SUCCESS: red team successful pickup at {(x,y)} by robots {[robot.id for robot in redteam_pickups]}")
+                print(f"PICKUP FAILURE: blue team failed pickup at {(x,y)} by robots {[robot.id for robot in blueteam_pickups]}")
+                self.do_pickup(redteam_pickups[0],redteam_pickups[1],current_tile)
+            #only red team valid and not enough gold
+            elif red_pickup_valid and (not blue_pickup_valid) and current_tile.gold <= 0:
+                print(f"PICKUP FAILURE: red team failed pickup at {(x,y)} by robots {[robot.id for robot in redteam_pickups]},not enough gold present")
+                print(f"PICKUP FAILURE: blue team failed pickup at {(x,y)} by robots {[robot.id for robot in blueteam_pickups]}")
+
+            #only blue team valid and enough gold
+            elif blue_pickup_valid and (not red_pickup_valid) and current_tile.gold > 0:
+                print(f"PICKUP SUCCESS: blue team successful pickup at {(x,y)} by robots {[robot.id for robot in blueteam_pickups]}")
+                print(f"PICKUP FAILURE: red team failed pickup at {(x,y)} by robots {[robot.id for robot in redteam_pickups]}")
+                self.do_pickup(blueteam_pickups[0],blueteam_pickups[1],current_tile)
+            #only blue team valid and not enough gold
+            elif blue_pickup_valid and (not red_pickup_valid) and current_tile.gold <= 0:
+                print(f"PICKUP FAILURE: blue team successful pickup at {(x,y)} by robots {[robot.id for robot in blueteam_pickups]}, not enough gold present")
+                print(f"PICKUP FAILURE: red team failed pickup at {(x,y)} by robots {[robot.id for robot in redteam_pickups]}")
+
+            #neither teams valid
+            else:
+                #print(f"PICKUP FAILURE: both red and blue teams attempted pickup at {(x,y)}")
+                pass
+            
+            #remove processed robots from dict
+            for robot in pickups:
+                del tile_robot_actions[robot]
+            
+            #processing gold drops -----------------------------------------------------------------------
+
+            #Check this line!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Please !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+            red_team_partnered = [robot for robot in current_tile_redteam if (robot.partner_id is not None and robot.carrying == True)]
+            blue_team_partnered = [robot for robot in current_tile_blueteam if (robot.partner_id is not None and robot.carrying == True)]
+
+            red_partners = []
+            for robot1 in red_team_partnered:
+                for robot2 in red_team_partnered:
+                    if robot2.id != robot1.id and robot1.partner_id == robot2.id:
+                        if [robot1, robot2] not in red_partners:
+                            red_partners.append([robot1,robot2])
+
+            blue_partners = []
+            for robot1 in blue_team_partnered:
+                for robot2 in blue_team_partnered:
+                    if robot2.id != robot1.id and robot1.partner_id == robot2.id:
+                        if [robot1, robot2] not in blue_partners:
+                            blue_partners.append([robot1,robot2])
+            
+            for [RobotA, RobotB] in red_partners:
+                #to drop, they must be facing different directions and moving. Turning doesn't matter
+                if (tile_robot_actions[RobotA] == tile_robot_actions[RobotB]) and (RobotA.dir != RobotB.dir):
+                    self.do_failed_carry(RobotA,RobotB,current_tile)
+
+            for [RobotA, RobotB] in blue_partners:
+                #to drop, they must be facing different directions and moving. Turning doesn't matter
+                if (tile_robot_actions[RobotA] == tile_robot_actions[RobotB]) and (RobotA.dir != RobotB.dir):
+                    self.do_failed_carry(RobotA,RobotB,current_tile)
+
         
         print("Timestep:" + str(self.timestep).zfill(3))
         self.check_messages()

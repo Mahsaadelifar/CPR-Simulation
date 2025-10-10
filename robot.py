@@ -245,7 +245,7 @@ class Robot:
         gridrobots, gridteammates, gridgold = self.sense_tile_values()
 
         # Deposit gold if carrying and at deposit
-        if self.carrying and (self.pos == self.kb.deposit):
+        if (self.carrying and (self.pos == self.kb.deposit)):
             self.decision = ["deposit_gold", tuple(self.pos)]
             print(f"Robot {self.id} at {self.pos} will deposit gold")
             #self.send_to_all(Message(id=f"{timestep}9", content=tuple(self.pos))) should send message AFTER successful execution
@@ -287,7 +287,7 @@ class Robot:
     def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
 
-        print(f"robot: {self.id}, partner: {self.partner_id}, target: {self.target}, decision: {self.decision}, position: {self.pos}")
+        print(f"robot: {self.id}, partner: {self.partner_id}, target: {self.target}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}")
         #print(f"sensed: {self.kb.sensed}")
 
         if self.decision[0] == "move":
