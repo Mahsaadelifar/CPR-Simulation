@@ -12,7 +12,7 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots()
+        self.initialize_robots_test()
 
     def initialize_robots(self):
         # Red team
@@ -30,6 +30,18 @@ class Simulation:
 
             rx += 1
             bx -= 1
+    
+    def initialize_robots_test(self):
+        red_deposit_pos = [0,0]
+        robot_1 = Robot(grid=self.grid, team=Team.RED, position=[1,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_2 = Robot(grid=self.grid, team=Team.RED, position=[1,1], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_3 = Robot(grid=self.grid, team=Team.RED, position=[1,2], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_4 = Robot(grid=self.grid, team=Team.RED, position=[1,3], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+
+        self.grid.add_robot(robot=robot_1, pos=(1,0))
+        self.grid.add_robot(robot=robot_2, pos=(1,1))
+        self.grid.add_robot(robot=robot_3, pos=(1,2))
+        self.grid.add_robot(robot=robot_4, pos=(1,3))
 
     def draw_grid(self, screen):
         # Draw scores
@@ -108,31 +120,59 @@ class Simulation:
         self.draw_grid(screen)
         self.draw_robots(screen)
         
-    def print_all_messages(self):
+    def print_team_messages(self):
+        for robot in self.grid.robots:
+            print(ANSI.MAGENTA.value + f"Robot {robot.id} messages received:" + ANSI.RESET.value)
+            for mtype, messages in robot.kb.received_messages.items():
+                for message in messages:
+                    print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
+        print("==============================")
         for robot in self.grid.robots:
             print(ANSI.MAGENTA.value + f"Robot {robot.id} messages read:" + ANSI.RESET.value)
             for mtype, messages in robot.kb.read_messages.items():
                 for message in messages:
-                    print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, countdown: {message.countdown}" + ANSI.RESET.value)
+                    print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
         print("==============================")
 
     def print_partner_messages(self):
         for robot in self.grid.robots:
+            print(ANSI.CYAN.value + f"Robot {robot.id} partner messages received:" + ANSI.RESET.value)
+            for pmtype, messages in robot.kb.received_partner_messages.items():
+                for message in messages:
+                    print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
+        print("==============================")
+        for robot in self.grid.robots:
             print(ANSI.CYAN.value + f"Robot {robot.id} partner messages read:" + ANSI.RESET.value)
-            for pmtype, message in robot.kb.read_partner_messages.items():
-                if message:
-                    print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, countdown: {message.countdown}" + ANSI.RESET.value)
+            for pmtype, messages in robot.kb.read_partner_messages.items():
+                for message in messages:
+                    print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
         print("==============================")
 
     def step(self):
         print("========= START OF TIMESTEP " + str(self.timestep) + " =========")
+        for robot in self.grid.robots:
+            robot.timestep = self.timestep
 
         for robot in self.grid.robots:
             robot.sense()
+
+        print("PLANNING PHASE")
+        for robot in self.grid.robots:
             robot.plan()
+        print("END OF PLANNING PHASE")
+
+        print("READING PHASE")
+        for robot in self.grid.robots:
             robot.read_message()
-            robot.read_message() # must read twice for all robots to update their received messages
+        
+        self.print_team_messages()
+        self.print_partner_messages()
+        print("END OF READING PHASE")
+    
+        print("EXECUTION PHASE")
+        for robot in self.grid.robots:
             robot.execute()
+        print("END OF EXECUTION PHASE")
 
         print("========= END OF TIMESTEP " + str(self.timestep) + " =========")
         self.timestep += 1

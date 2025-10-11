@@ -7,6 +7,8 @@ class Tile:
         self.deposit = deposit        # True if this tile is a deposit/base
         self.gold = gold              # Amount of gold on this tile
         self.robots = []              # List of robot objects at that tile
+
+        self.gold_acquirable = False      # two robots need to pickup gold for it to be acquired
     
     def set_deposit(self):
         """Mark this tile as a deposit location."""
@@ -19,7 +21,10 @@ class Tile:
     def remove_gold(self):
         """Remove one piece of gold (if available)."""
         if self.gold > 0:
-            self.gold -= 1
+            if self.gold_acquirable == True:
+                self.gold -= 1
+                self.gold_acquirable = False
+            self.gold_acquirable = True
         else:
             raise ValueError("No gold on this tile.")
     
@@ -55,7 +60,7 @@ class Grid:
         for pos in [(0,0), (GRID_SIZE-1, GRID_SIZE-1)]:
             self.tiles[pos].set_deposit()
 
-        self.robots = [] # Robots currently on the grid, used for visuals
+        self.robots = [] # Robots currently on the grid
         self.scores = {Team.RED: 0, Team.BLUE: 0}
 
     def add_robot(self, robot, pos):

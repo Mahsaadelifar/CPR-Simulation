@@ -19,7 +19,7 @@ def main():
             if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
                 sim.print_partner_messages()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                sim.print_all_messages()
+                sim.print_team_messages()
         sim.draw(screen)
         pygame.display.flip()
 
