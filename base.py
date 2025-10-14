@@ -72,6 +72,15 @@ class Grid:
         """Add one point to the team's score."""
         self.scores[team] += 0.5 # 1 for each robot's deposit
 
+    def check_gold(self):
+        for robot in self.robots:
+            if robot.carrying and robot.partner and (robot.pos != robot.partner.pos):
+                self.tiles[tuple(robot.pos)].add_gold()
+                robot.partner.carrying = False
+                robot.partner.partner = None
+                robot.carrying = False
+                robot.partner = None
+
 # Turn clockwise
 def turn_cw(vector):
     x,y = vector
