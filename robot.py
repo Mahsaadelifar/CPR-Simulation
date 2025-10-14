@@ -5,15 +5,21 @@ from base import *
 
 """
 Message types:
-    - "please_help": request for nearby robots to come to (x,y)
-    - "partnered": acknowledgement that proposer is partnered with acceptor
+    - "please_help": (x,y)
+            request for nearby robots to come to (x,y)
+    - "partnered": (x,y)
+            acknowledgement that proposer is partnered with acceptor
+    - "partner_unneeded": (x,y)
 
 Partner message types:
-    - "facing_direction": declaration that the proposer is facing direction Dir
-    - "move_forward": request for partner to move forward
+    - "facing_direction": Dir
+            declaration that the proposer is facing direction Dir
+    - "move_forward": Bool
+            request for partner to move forward
+    - "pickup_gold": (x,y)
 """
 
-message_types = ["please_help", "partnered", "deposit_gold"]
+message_types = ["please_help", "partnered", "partner_unneeded"]
 partner_message_types = ["facing_direction", "move_forward", "pickup_gold"]
 
 class Message:
@@ -26,7 +32,7 @@ class Message:
         self.acceptor = acceptor    # robot who accepts the message
     
     def __eq__(self, other):
-        return (self.timestep == other.timestep and
+        return ((abs(self.timestep - other.timestep) < 5) and
                 self.mtype == other.mtype and
                 self.content == other.content and
                 self.proposer == other.proposer and
@@ -71,6 +77,26 @@ class KB:
                     self.read_partner_messages[pmtype].append(message) # only keep the latest partner message
                     messages.remove(message)
                 message.decrement_countdown()
+    
+    def clean_old_messages(self, timestep):
+        for mtype, messages in self.read_messages.items():
+            for message in messages:
+                if message.timestep <= (timestep - 10):
+                    messages.remove(message)
+        for mtype, messages in self.read_partner_messages.items():
+            for message in messages:
+                if message.timestep <= (timestep - 10):
+                    messages.remove(message)
+
+    def clean_help_requests(self):
+        for request in self.read_messages["please_help"]:
+            for confirmation in self.read_messages["partner_unneeded"]:
+                if request.content == confirmation.content:
+                    self.read_messages["please_help"].remove(request)
+
+    def clean_kb(self, timestep):
+        self.clean_old_messages(timestep)
+        self.clean_help_requests()
    
 class Robot:
     next_id = 1
@@ -181,12 +207,14 @@ class Robot:
             pass
 
     def pair_up(self, teammates, gold): # grid robots is a list of teammates on the grid, gridgold is number of gold on the grid
-        self.send_partner_request(teammates[0])
-        if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id:
-            self.partner = teammates[0]
-            print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
-        else:
-            print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
+        if self.partner is None:
+            self.send_partner_request(teammates[0])
+            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id:
+                self.partner = teammates[0]
+                self.send_partner_unneeded()
+                print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
+            else:
+                print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
                 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
@@ -243,6 +271,10 @@ class Robot:
     
     ### MESSAGE ACTIONS ###
 
+    def clean_kb(self, timestep):
+        """Clean knowledge base"""
+        self.kb.clean_kb(timestep)
+
     def receive_message(self, message: Message):
         """Receive a message and store it in the KB."""
         self.kb.receive_message(message)
@@ -275,10 +307,10 @@ class Robot:
         message = Message(timestep=self.timestep, mtype="partnered", content=tuple(self.pos)) # content is the position, but we only need to check for proposer/acceptor
         self.send_message(message, acceptor)
     
-    def send_partner_confirmation(self, acceptor: 'Robot'):
-        """Send a partnered confirmation message to the acceptor robot."""
-        message = Message(timestep=self.timestep, mtype="partner_confirmation", content=tuple(self.pos)) # content is the position, but we only need to check for proposer/acceptor
-        self.send_message(message, acceptor)
+    def send_partner_unneeded(self):
+        """Send a message to all that a partner is no longer needed"""
+        message = Message(timestep=self.timestep, mtype="partner_unneeded", content=tuple(self.pos))
+        self.send_to_all(message)
     
     def send_help_request(self):
         """Send a please_help message to all robots."""
@@ -365,9 +397,11 @@ class Robot:
         return
 
     # Updated execute with coordinated move and prints
-    def execute(self):
+    def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
         gridrroboobots, gridteammates, gridgold = self.sense_current_tile()
+        
+        self.clean_kb(timestep)
 
         if self.partner:
             print(ANSI.GREEN.value + 

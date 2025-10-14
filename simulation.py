@@ -171,7 +171,7 @@ class Simulation:
     
         print("EXECUTION PHASE")
         for robot in self.grid.robots:
-            robot.execute()
+            robot.execute(self.timestep)
         print("END OF EXECUTION PHASE")
 
         print("========= END OF TIMESTEP " + str(self.timestep) + " =========")
