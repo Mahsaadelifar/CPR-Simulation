@@ -12,15 +12,15 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots_test()
+        self.initialize_robots()
 
     def initialize_robots(self):
         # Red team
         red_deposit_pos = [0,0]
-        rx,ry = [1,0]
+        rx,ry = [0,1]
         # Blue team
         blue_deposit_pos = [GRID_SIZE-1, GRID_SIZE-1]
-        bx,by = [GRID_SIZE-2,GRID_SIZE-1]
+        bx,by = [GRID_SIZE-1,GRID_SIZE-2]
         for i in range(ROBOTS_PER_TEAM):
             r_robot = Robot(grid=self.grid, team=Team.RED, position=[rx,ry], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
             b_robot = Robot(grid=self.grid, team=Team.BLUE, position=[bx,by], direction=Dir.NORTH, deposit = blue_deposit_pos, timestep=self.timestep)
@@ -28,8 +28,8 @@ class Simulation:
             self.grid.add_robot(robot=r_robot, pos=(rx,ry))
             self.grid.add_robot(robot=b_robot, pos=(bx,by))
 
-            rx += 1
-            bx -= 1
+            ry += 1
+            by -= 1
     
     def initialize_robots_test(self):
         red_deposit_pos = [0,0]
@@ -42,6 +42,28 @@ class Simulation:
         self.grid.add_robot(robot=robot_2, pos=(1,1))
         self.grid.add_robot(robot=robot_3, pos=(1,2))
         self.grid.add_robot(robot=robot_4, pos=(1,3))
+
+    def initialize_robots_test2(self):
+        red_deposit_pos = [0,0]
+        rx,ry = [1,0]
+        for i in range(ROBOTS_PER_TEAM):
+            r_robot = Robot(grid=self.grid, team=Team.RED, position=[rx,ry], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+
+            self.grid.add_robot(robot=r_robot, pos=(rx,ry))
+
+            rx += 1
+
+    def initialize_robots_test3(self):
+        red_deposit_pos = [0,0]
+        robot_1 = Robot(grid=self.grid, team=Team.RED, position=[1,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_2 = Robot(grid=self.grid, team=Team.RED, position=[2,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_3 = Robot(grid=self.grid, team=Team.RED, position=[3,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_4 = Robot(grid=self.grid, team=Team.RED, position=[4,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+
+        self.grid.add_robot(robot=robot_1, pos=(1,0))
+        self.grid.add_robot(robot=robot_2, pos=(2,0))
+        self.grid.add_robot(robot=robot_3, pos=(3,0))
+        self.grid.add_robot(robot=robot_4, pos=(4,0))
 
     def draw_grid(self, screen):
         # Draw scores
