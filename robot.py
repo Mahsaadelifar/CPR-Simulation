@@ -20,7 +20,7 @@ Partner message types:
 """
 
 message_types = ["please_help", "partnered", "partner_unneeded"]
-partner_message_types = ["facing_direction", "move_forward", "pickup_gold"]
+partner_message_types = ["facing_direction", "move_forward", "pickup_gold", "deposit_gold"]
 
 class Message:
     def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=1):
@@ -92,7 +92,8 @@ class KB:
         for request in self.read_messages["please_help"]:
             for confirmation in self.read_messages["partner_unneeded"]:
                 if request.content == confirmation.content:
-                    self.read_messages["please_help"].remove(request)
+                    if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
+                        self.read_messages["please_help"].remove(request)
 
     def clean_kb(self, timestep):
         self.clean_old_messages(timestep)
@@ -234,13 +235,19 @@ class Robot:
         return
 
     def deposit_gold(self):
-        if self.carrying and (self.pos == self.kb.deposit):
+        if not self.partner:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner...? How'd you get this far??" + ANSI.RESET.value)
+        if not self.carrying:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: Not carrying gold!" + ANSI.RESET.value)
+        if self.pos != self.kb.deposit:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: Not at deposit point!" + ANSI.RESET.value)
+        
+        self.send_deposit_request()
+        deposit_confirmation = self.kb.read_partner_messages.get("deposit_gold")[-1].content if self.kb.read_partner_messages.get("deposit_gold") else None
+        if deposit_confirmation:
             self.carrying = False
-            if self.partner:
-                self.partner.carrying = False
-                self.partner = None
-        else:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: Not carrying gold or not at deposit!" + ANSI.RESET.value)
+            self.partner = None
+            self.grid.add_score(self.team)
 
     def set_target(self):
         help_requests = self.kb.read_messages.get("please_help", [])
@@ -320,6 +327,11 @@ class Robot:
     def send_pickup_request(self):
         """Send a pickup_gold message to partner."""
         message = Message(timestep=self.timestep, mtype="pickup_gold", content=tuple(self.pos))
+        self.send_to_partner(message)
+
+    def send_deposit_request(self):
+        """Send a deposit_gold message to partner."""
+        message = Message(timestep=self.timestep, mtype="deposit_gold", content=tuple(self.pos))
         self.send_to_partner(message)
 
     def send_direction(self):

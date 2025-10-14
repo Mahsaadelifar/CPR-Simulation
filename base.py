@@ -70,7 +70,7 @@ class Grid:
     
     def add_score(self, team: Team):
         """Add one point to the team's score."""
-        self.scores[team] += 1
+        self.scores[team] += 0.5 # 1 for each robot's deposit
 
 # Turn clockwise
 def turn_cw(vector):
