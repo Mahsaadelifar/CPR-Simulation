@@ -416,7 +416,7 @@ class Robot:
             print(f"Robot {self.id} has the move confirmation: {move_confirmation}")
 
             #if in the previous timestep partner was ready to move
-            if move_confirmation and move_confirmation == tuple(self.pos):
+            if move_confirmation and move_confirmation == tuple(self.pos) and :
                 self.decision = ["move_forward", tuple(self.pos)]
             else: #if partner was not ready to move in previous timestep
                 self.decision = ["wait", tuple(self.pos)]
