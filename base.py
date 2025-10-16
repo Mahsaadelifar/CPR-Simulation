@@ -26,7 +26,8 @@ class Tile:
                 self.gold_acquirable = False
             self.gold_acquirable = True
         else:
-            raise ValueError("No gold on this tile.")
+            #raise ValueError("No gold on this tile.")
+            print("No gold on this tile.")
     
     def add_robot(self, robot):
         """Add a robot onto the tile"""

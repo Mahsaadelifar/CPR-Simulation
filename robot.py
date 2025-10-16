@@ -64,6 +64,14 @@ class KB:
             if message not in self.received_messages[message.mtype]:
                 self.received_messages[message.mtype].append(message.copy())
     
+    def deliver_messages(self):
+        for mtype, messages in self.received_messages.items():
+            for message in messages:
+                message.decrement_countdown()
+        for pmtype, messages in self.received_partner_messages.items():
+            for message in messages:
+                message.decrement_countdown()
+
     def read_message(self):
         for mtype, messages in self.received_messages.items():
             for message in messages:
@@ -72,7 +80,7 @@ class KB:
                     messages.remove(message)
                 message.decrement_countdown()
         for pmtype, messages in self.received_partner_messages.items():
-            for message in messages: #try using a copy so the list isn't modified while looping
+            for message in messages: 
                 if message.countdown == 0:
                     self.read_partner_messages[pmtype].append(message) # only keep the latest partner message
                     messages.remove(message)
@@ -263,6 +271,7 @@ class Robot:
             self.partner = None
             self.grid.add_score(self.team)
 
+
     def set_target(self):
         help_requests = self.kb.read_messages.get("please_help", [])
 
@@ -281,8 +290,31 @@ class Robot:
         else:
             if self.closest_gold(): # if nothing else to do, target is closest gold
                 self.target_position = tuple(self.closest_gold())
-            else: # if no gold in sight move forward 1
-                self.target_position = tuple(self.next_position())
+            else:  # if no gold in sight
+                self.target_position = self.next_position()
+                
+                if self.target_position == self.pos:
+                    x, y = self.pos
+
+                    # default to current coordinates
+                    new_x, new_y = x, y
+
+                    if x == 0:
+                        new_x = GRID_SIZE - 1
+                    elif x == GRID_SIZE - 1:
+                        new_x = 0
+
+                    if y == 0:
+                        new_y = GRID_SIZE - 1
+                    elif y == GRID_SIZE - 1:
+                        new_y = 0
+
+                    self.target_position = (new_x, new_y)
+
+
+                
+
+
     
     def next_move_to_target(self):
         target_dir = self.calc_target_dir()
@@ -398,30 +430,36 @@ class Robot:
             # TURN if not facing the right direction
             if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
                 self.decision = [self.turn_toward(target_dir), tuple(self.pos)]
+                self.send_direction() #send new direction after turning
                 print(ANSI.YELLOW.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
                 return
             
+            # we are currently facing the right direction
             # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
             if partner_dir != target_dir: # wait for partner before each move
                 self.decision = ["wait", tuple(self.pos)]
                 print(ANSI.YELLOW.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
-                if self.dir == target_dir:
-                    self.send_move_request() #send move request if we are facing the right direction
+                self.send_move_request() #send move request if we are facing the right direction
+                self.send_direction()
                 return
             
             # MOVE if both facing the right direction
             self.send_move_request()
-            #reads move confirmation from previous timestep
-            move_confirmation = self.kb.read_partner_messages.get("move_forward")[-1].content if self.kb.read_partner_messages.get("move_forward") else None
-            print(f"Robot {self.id} has the move confirmation: {move_confirmation}")
+            move_confirmation = None 
+
+            #reads most recent move confirmation in read_partner_messages list
+            if len(self.kb.read_partner_messages.get("move_forward")) > 0:
+                move_confirmation = self.kb.read_partner_messages.get("move_forward")[-1].content if self.kb.read_partner_messages.get("move_forward") else None
+                print(f"Robot {self.id} has the move confirmation: {move_confirmation} sent at timestep {self.kb.read_partner_messages.get("move_forward")[-1].timestep}")
 
             #if in the previous timestep partner was ready to move
-            if move_confirmation and move_confirmation == tuple(self.pos) and :
+            if move_confirmation and move_confirmation == tuple(self.pos):
                 self.decision = ["move_forward", tuple(self.pos)]
             else: #if partner was not ready to move in previous timestep
                 self.decision = ["wait", tuple(self.pos)]
             print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} are moving forward to the {self.dir.name}" + ANSI.RESET.value)
             return
+
 
         # if all else fails just do what you want
         self.decision = [self.next_move_to_target(), tuple(self.pos)]
@@ -430,7 +468,7 @@ class Robot:
     # Updated execute with coordinated move and prints
     def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
-        gridrroboobots, gridteammates, gridgold = self.sense_current_tile()
+        gridrobots, gridteammates, gridgold = self.sense_current_tile()
         
         self.clean_kb(timestep)
 
