@@ -72,7 +72,7 @@ class KB:
                     messages.remove(message)
                 message.decrement_countdown()
         for pmtype, messages in self.received_partner_messages.items():
-            for message in messages:
+            for message in messages: #try using a copy so the list isn't modified while looping
                 if message.countdown == 0:
                     self.read_partner_messages[pmtype].append(message) # only keep the latest partner message
                     messages.remove(message)
@@ -91,7 +91,10 @@ class KB:
     def clean_help_requests(self):
         for request in self.read_messages["please_help"]:
             for confirmation in self.read_messages["partner_unneeded"]:
-                if request.content == confirmation.content:
+                if request.content == confirmation.content: 
+                    #should we also add a check for if the sender is the same? 
+                    # cause mutliple robots can send help messages from the same location 
+                    # and the content is the location
                     if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
                         self.read_messages["please_help"].remove(request)
 
@@ -157,7 +160,7 @@ class Robot:
 
         for dx,dy in SENSE_VECT[self.dir]:
             tile = self.grid.tiles[(self.pos[0]+dx, self.pos[1]+dy)] if (self.pos[0]+dx, self.pos[1]+dy) in self.grid.tiles else None
-            if tile and (self.pos[0]+dx, self.pos[1]+dy) not in self.kb.sensed:
+            if tile: #and (self.pos[0]+dx, self.pos[1]+dy) not in self.kb.sensed: commented out so it writes over old info
                 objects = {}
                 objects["deposit"] = tile.deposit 
                 objects["gold"] = tile.gold
@@ -207,31 +210,42 @@ class Robot:
         else:
             pass
 
-    def pair_up(self, teammates, gold): # grid robots is a list of teammates on the grid, gridgold is number of gold on the grid
-        if self.partner is None:
+    def pair_up(self, teammates, gold): # teammates is a list of teammates on the grid, gold is number of gold on the grid
+        if self.partner is None and (len(teammates) > 0):
             self.send_partner_request(teammates[0])
-            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id:
+            #if recieved an affirmative response, pair up
+            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id: #are we allowed to access teammates.id??
                 self.partner = teammates[0]
-                self.send_partner_unneeded()
+                self.send_partner_unneeded() #tell otehrs we already have a partner
                 print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
+            #no affirmative reply
             else:
                 print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
+                #maybe we should send to a different robot??
+        else:
+            print("no available teammates for robot {self.id}")
                 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
+        tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
+        
         if not self.partner:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
         if self.carrying:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: Already carrying gold!" + ANSI.RESET.value)
-        if self.kb.sensed.get(tuple(self.pos), {}).get("gold", 0) == 0:
+        if tile_gold == 0:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
+        # if self.kb.sensed.get(tuple(self.pos), {}).get("gold", 0) == 0:
+        #     print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
 
         self.send_pickup_request()
         pickup_confirmation = self.kb.read_partner_messages.get("pickup_gold")[-1].content if self.kb.read_partner_messages.get("pickup_gold") else None
-        if pickup_confirmation:
+        if pickup_confirmation and tile_gold >0:
             self.carrying = True
             tile.remove_gold()
             print(ANSI.MAGENTA.value + f"Robots {self.id} and {self.partner.id} successfully picked up gold at {self.pos}" + ANSI.RESET.value)
+        else:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
         return
 
     def deposit_gold(self):
@@ -353,18 +367,18 @@ class Robot:
         # if standing on gold
         if gridgold > 0:
             # SEND HELP REQUEST (no other teammates)
-            if len(gridteammates) == 0:
+            if not self.partner and len(gridteammates) == 0:
                 self.decision = ["wait", tuple(self.pos)]
                 self.send_help_request()
                 print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} sending help request" + ANSI.RESET.value)
                 return
             # PAIR UP (has teammates, no partner)
-            if not self.partner:
+            if not self.partner and len(gridteammates) > 0:
                 self.decision = ["pair_up", tuple(self.pos)]
                 print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up" + ANSI.RESET.value)
                 return
             # PICKUP GOLD (has partner, not carrying)
-            if not self.carrying:
+            if not self.carrying and self.partner != None:
                 self.decision = ["pickup_gold", tuple(self.pos)]
                 print(ANSI.MAGENTA.value + f"Robot {self.id} and {self.partner.id} at {self.pos} picking up gold" + ANSI.RESET.value)
                 return
@@ -379,27 +393,32 @@ class Robot:
         if self.carrying and self.partner:
             self.send_direction()
             partner_dir = self.kb.read_partner_messages.get("facing_direction")[-1].content if self.kb.read_partner_messages.get("facing_direction") else None
+            target_dir = self.calc_target_dir()
 
             # TURN if not facing the right direction
-            if self.dir != self.calc_target_dir(): # if not facing the right direction, turn to face the right direction
-                self.decision = [self.turn_toward(self.calc_target_dir()), tuple(self.pos)]
+            if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
+                self.decision = [self.turn_toward(target_dir), tuple(self.pos)]
                 print(ANSI.YELLOW.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
                 return
             
-            # WAIT if partner not facing the right direction
-            if partner_dir != self.calc_target_dir(): # wait for partner before each move
+            # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
+            if partner_dir != target_dir: # wait for partner before each move
                 self.decision = ["wait", tuple(self.pos)]
                 print(ANSI.YELLOW.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
+                if self.dir == target_dir:
+                    self.send_move_request() #send move request if we are facing the right direction
                 return
             
             # MOVE if both facing the right direction
             self.send_move_request()
+            #reads move confirmation from previous timestep
             move_confirmation = self.kb.read_partner_messages.get("move_forward")[-1].content if self.kb.read_partner_messages.get("move_forward") else None
             print(f"Robot {self.id} has the move confirmation: {move_confirmation}")
 
+            #if in the previous timestep partner was ready to move
             if move_confirmation and move_confirmation == tuple(self.pos):
                 self.decision = ["move_forward", tuple(self.pos)]
-            else:
+            else: #if partner was not ready to move in previous timestep
                 self.decision = ["wait", tuple(self.pos)]
             print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} are moving forward to the {self.dir.name}" + ANSI.RESET.value)
             return

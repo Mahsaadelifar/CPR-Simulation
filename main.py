@@ -6,7 +6,7 @@ from robot import *
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((X_WINDOW_SIZE, Y_WINDOW_SIZE))
+    screen = pygame.display.set_mode(( X_WINDOW_SIZE, Y_WINDOW_SIZE))
     sim = Simulation()
 
     while True:  
@@ -25,3 +25,4 @@ def main():
 
 if __name__=="__main__":
     main()
+ 
