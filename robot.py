@@ -236,25 +236,27 @@ class Robot:
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
         tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
-        
-        if not self.partner:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
-        if self.carrying:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: Already carrying gold!" + ANSI.RESET.value)
-        if tile_gold == 0:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
-        # if self.kb.sensed.get(tuple(self.pos), {}).get("gold", 0) == 0:
-        #     print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
 
-        self.send_pickup_request()
-        pickup_confirmation = self.kb.read_partner_messages.get("pickup_gold")[-1].content if self.kb.read_partner_messages.get("pickup_gold") else None
-        if pickup_confirmation and tile_gold >0:
-            self.carrying = True
-            tile.remove_gold()
-            print(ANSI.MAGENTA.value + f"Robots {self.id} and {self.partner.id} successfully picked up gold at {self.pos}" + ANSI.RESET.value)
-        else:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
-        return
+        if len(tile_teammates) > 1:
+            print(ANSI.RED.value + f"ERROR Robot {self.id}: More than two robots in the cell!" + ANSI.RESET.value)
+            return
+        else:  
+            if not self.partner:
+                print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
+            if self.carrying:
+                print(ANSI.RED.value + f"ERROR Robot {self.id}: Already carrying gold!" + ANSI.RESET.value)
+            if tile_gold == 0:
+                print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
+
+            self.send_pickup_request()
+            pickup_confirmation = self.kb.read_partner_messages.get("pickup_gold")[-1].content if self.kb.read_partner_messages.get("pickup_gold") else None
+            if pickup_confirmation and tile_gold >0:
+                self.carrying = True
+                tile.remove_gold()
+                print(ANSI.MAGENTA.value + f"Robots {self.id} and {self.partner.id} successfully picked up gold at {self.pos}" + ANSI.RESET.value)
+            else:
+                print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
+            return
 
     def deposit_gold(self):
         if not self.partner:
@@ -450,7 +452,7 @@ class Robot:
             #reads most recent move confirmation in read_partner_messages list
             if len(self.kb.read_partner_messages.get("move_forward")) > 0:
                 move_confirmation = self.kb.read_partner_messages.get("move_forward")[-1].content if self.kb.read_partner_messages.get("move_forward") else None
-                print(f"Robot {self.id} has the move confirmation: {move_confirmation} sent at timestep {self.kb.read_partner_messages.get("move_forward")[-1].timestep}")
+                # print(f"Robot {self.id} has the move confirmation: {move_confirmation} sent at timestep {self.kb.read_partner_messages.get("move_forward")[-1].timestep}")
 
             #if in the previous timestep partner was ready to move
             if move_confirmation and move_confirmation == tuple(self.pos):
