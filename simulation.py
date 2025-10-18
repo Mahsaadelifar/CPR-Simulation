@@ -12,7 +12,7 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots_horizontal()
+        self.initialize_robots_vertical()
 
     def initialize_robots_vertical(self):
         # Red team

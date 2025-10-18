@@ -10,6 +10,7 @@ Message types:
     - "partnered": (x,y)
             acknowledgement that proposer is partnered with acceptor
     - "partner_unneeded": (x,y)
+            declaration for others to move out of cell
 
 Partner message types:
     - "facing_direction": Dir
@@ -100,7 +101,7 @@ class KB:
         for request in self.read_messages["please_help"]:
             for confirmation in self.read_messages["partner_unneeded"]:
                 if request.content == confirmation.content: 
-                    #should we also add a check for if the sender is the same? 
+                    # should we also add a check for if the sender is the same? 
                     # cause mutliple robots can send help messages from the same location 
                     # and the content is the location
                     if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
@@ -224,7 +225,7 @@ class Robot:
             #if recieved an affirmative response, pair up
             if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id: #are we allowed to access teammates.id??
                 self.partner = teammates[0]
-                self.send_partner_unneeded() #tell otehrs we already have a partner
+                self.send_partner_unneeded() # tell otehrs we already have a partner
                 print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
             #no affirmative reply
             else:
@@ -276,6 +277,12 @@ class Robot:
 
     def set_target(self):
         help_requests = self.kb.read_messages.get("please_help", [])
+        gridrobots, gridteammates, gridgold = self.sense_current_tile()
+        if len(gridteammates) > 1 and self.partner == None and self.kb.read_messages["partner_unneeded"]:
+            for message in self.kb.read_messages.get("partner_unneeded"):
+                if self.pos == message.content:
+                    self.target_position = (0,0) # just get outta there
+                    return
 
         # if you have a partner and gold, then your target is the deposit
         if self.carrying and (self.partner != None):
@@ -312,11 +319,6 @@ class Robot:
                         new_y = 0
 
                     self.target_position = (new_x, new_y)
-
-
-                
-
-
     
     def next_move_to_target(self):
         target_dir = self.calc_target_dir()
@@ -397,6 +399,13 @@ class Robot:
     def plan(self):
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
         self.set_target()
+
+        if len(gridteammates) > 1 and self.partner == None and self.kb.read_messages["partner_unneeded"]:
+            for message in self.kb.read_messages.get("partner_unneeded"):
+                if tuple(self.pos) == message.content:
+                    self.decision = [self.next_move_to_target(), tuple(self.pos)]
+                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizing it's unneeded" + ANSI.RESET.value)
+                    return
 
         # if standing on gold
         if gridgold > 0:
