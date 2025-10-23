@@ -175,7 +175,7 @@ class Simulation:
 
         print("PLANNING PHASE")
         for robot in self.grid.robots:
-            robot.plan()
+            robot.plan(self.timestep)
         print("END OF PLANNING PHASE")
 
         print("READING PHASE")

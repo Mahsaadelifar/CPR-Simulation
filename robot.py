@@ -18,10 +18,14 @@ Partner message types:
     - "move_forward": Bool
             request for partner to move forward
     - "pickup_gold": (x,y)
+    - "sync_proposal": dict of {t_sync: int, plan: list, confirmed: bool, current_step: int}
+            proposer proposes a coordinated move plan to take the pair from their current position to the deposit *once they are oriented in the same way*
+    - "sync_ack": Bool
+            proposer sends in response to a sync proposal to let partner know plan is acknowledged
 """
 
 message_types = ["please_help", "partnered", "partner_unneeded"]
-partner_message_types = ["facing_direction", "move_forward", "pickup_gold", "deposit_gold"]
+partner_message_types = ["facing_direction", "move_forward", "pickup_gold", "deposit_gold", "sync_proposal", "sync_ack"]
 
 class Message:
     def __init__(self, timestep: int, mtype: str, content: tuple, proposer: 'Robot'=None, acceptor: 'Robot'=None, countdown: int=1):
@@ -128,6 +132,10 @@ class Robot:
       self.target_position = None # (x,y); the target position the robot is heading to
 
       self.partner = None # the robot it is partnered with
+
+      self.pending_sync = None       # {t_sync: int, plan: list, confirmed: bool, current_step: int}
+      self.synced_plan = None        # plan ready to execute
+      self.sync_proposer = False
 
     ### HELPER FUNCTIONS ###
 
@@ -272,6 +280,8 @@ class Robot:
         if deposit_confirmation:
             self.carrying = False
             self.partner = None
+            self.pending_sync = None       
+            self.synced_plan = None 
             self.grid.add_score(self.team)
 
 
@@ -394,9 +404,175 @@ class Robot:
         message = Message(timestep=self.timestep, mtype="move_forward", content=tuple(self.pos))
         self.send_to_partner(message)
 
+    def calculate_moves_to_deposit(self):
+        #function that returns a list of actions taking robots from current position to deposit
+
+        #need to make a copy of these functions in here cause I don't want to edit the ones outside and break our code
+        #since the ones outside take in the robot object itself
+
+        def copy_calc_target_dir(from_pos,to_pos):
+            fx,fy = from_pos
+            tx,ty = to_pos
+            dx = tx-fx
+            dy = ty-fy
+
+            if dx != 0:
+                return Dir.EAST if dx > 0 else Dir.WEST
+            elif dy != 0:
+                return Dir.SOUTH if dy > 0 else Dir.NORTH
+            else:
+                return None
+        
+        def copy_turn_toward(curr_dir, target_dir):
+            dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
+            curr_index = dir_order.index(curr_dir)
+            cw_dir = dir_order[(curr_index + 1)%4]
+            ccw_dir = dir_order[(curr_index - 1)%4]
+
+            if target_dir == curr_dir:
+                return "wait"
+            elif target_dir == cw_dir:
+                return "turn_cw"
+            elif target_dir == ccw_dir:
+                return "turn_ccw"
+            else:
+                return "turn_cw" 
+        
+        def copy_move_forward(pos,dir): #use to perform moves forward so next move can be calculated
+            x,y = pos
+            if dir == Dir.NORTH and y>0:
+                y -= 1
+            elif dir == Dir.SOUTH and y < GRID_SIZE - 1:
+                y += 1
+            elif dir == Dir.EAST and x < GRID_SIZE - 1:
+                return (x + 1, y)
+            elif dir == Dir.WEST and x > 0:
+                return (x - 1, y)
+            return (x,y)
+        
+        #loop to simulate all the moves
+        pos = self.pos
+        dir = self.dir
+        target = self.kb.deposit
+        moves = []
+
+        #fix the movement so it moves all the way in x direction first then in y direction
+        for axis in [0,1]: #0 is x, 1 is y
+            while pos[axis] != target[axis]:
+                if axis ==0:
+                    target_dir = Dir.EAST if target[0] > pos[0] else Dir.WEST
+                else:
+                    target_dir = Dir.SOUTH if target[1] > pos[1] else Dir.NORTH
+                
+                if dir != target_dir:
+                    move = copy_turn_toward(dir, target_dir)
+                    moves.append(move)
+                
+                    dirs = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
+                    dir = dirs[(dirs.index(dir) + (1 if move=="turn_cw" else -1)) % 4]
+                else:
+                    moves.append("move_forward")
+                    pos = copy_move_forward(pos, dir)
+        
+        #return statement below!!!
+
+
+
+        # while pos != target:
+        #     #print(f"current position: {pos}, current target: {target}")
+        #     target_dir = copy_calc_target_dir(pos,target)
+
+        #     if target_dir is None:
+        #         break
+
+        #     if dir != target_dir:
+        #         move = copy_turn_toward(dir,target_dir)
+        #         moves.append(move)
+
+        #         if move == "turn_cw":
+        #             dir = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST][([Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST].index(dir) + 1) % 4]
+        #         elif move == "turn_ccw":
+        #             dir = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST][([Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST].index(dir) - 1) % 4]
+        #     else:
+        #         moves.append("move_forward")
+        #         pos = copy_move_forward(pos,dir)
+
+        return moves
+
+
+    def propose_sync_plan(self,timestep):
+        #propose move with partner including all timstep actions
+        plan_delay = 10 #how many timesteps into the future the robots plan to move together
+        #can change plan delay later, maybe see if larger/smaller values would work better
+        #10 seems to be a pretty decent value so far
+
+        if not self.partner:
+            return
+        
+        t_sync = timestep + plan_delay
+        plan = self.calculate_moves_to_deposit()
+
+        sync_message = Message(
+        timestep=timestep,
+        mtype="sync_proposal",
+        content=(t_sync, plan),
+        proposer=self,
+        acceptor=self.partner,
+        countdown=random.randint(1, 3) #set a random delay AHHHH
+        )
+
+        self.send_to_partner(sync_message)
+        self.pending_sync = {"t_sync": t_sync, "plan": plan, "confirmed": False, "current_step": 0}
+        self.sync_proposer = True
+        print(f"Robot {self.id}: proposed sync plan for timestep {t_sync}: {plan}")
+
+    def handle_sync_messages(self,timestep):
+        msgs = self.kb.read_partner_messages
+
+        #handle proposals for sync
+        if msgs["sync_proposal"]:
+            latest = msgs["sync_proposal"][-1]
+            t_sync, plan = latest.content
+            proposer = latest.proposer
+
+            if timestep < t_sync:
+
+                ack = Message(
+                    timestep=timestep,
+                    mtype="sync_ack",
+                    content=(t_sync,),
+                    proposer=self,
+                    acceptor=proposer,
+                    countdown=random.randint(1, 3)
+                )
+
+                self.send_to_partner(ack)
+                self.pending_sync = {"t_sync": t_sync, "plan": plan, "confirmed": True, "current_step":0}
+                print(f"Robot {self.id}: accepted sync plan starting at {t_sync}: {plan}")
+            
+            else:
+                print(f"Robot {self.id}: rejected expired plan proposed at (t={t_sync}, now={timestep})")
+        
+        #responding to partner acknowledgement
+        if msgs["sync_ack"]:
+            ack = msgs["sync_ack"][-1]
+            t_sync = ack.content[0]
+
+            if self.pending_sync and self.pending_sync["t_sync"] == t_sync:
+                if timestep < t_sync:
+                    self.pending_sync["confirmed"] = True
+                    print(f"Robot {self.id}: sync plan confirmed for timestep {t_sync}")
+                else:
+                    print(f"Robot {self.id}: recieved late ack for t={t_sync}, ignoring")
+
+
+
+
+
+
 ###__________________________________________________________________________###
 
-    def plan(self):
+    def plan(self, timestep):
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
         self.set_target()
 
@@ -434,47 +610,70 @@ class Robot:
 
         # COORDINATED MOVE if carrying gold with partner
         if self.carrying and self.partner:
+
+            #handling sync messagesfor partners
+            self.handle_sync_messages(self.timestep)
+
+            #get orientation of partnered robots to allign
+
+            #handling direction messages
             self.send_direction()
             partner_dir = self.kb.read_partner_messages.get("facing_direction")[-1].content if self.kb.read_partner_messages.get("facing_direction") else None
             target_dir = self.calc_target_dir()
 
-            # TURN if not facing the right direction
-            if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
-                self.decision = [self.turn_toward(target_dir), tuple(self.pos)]
-                self.send_direction() #send new direction after turning
-                print(ANSI.YELLOW.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
-                return
-            
-            # we are currently facing the right direction
-            # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
-            if partner_dir != target_dir: # wait for partner before each move
-                self.decision = ["wait", tuple(self.pos)]
-                print(ANSI.YELLOW.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
-                self.send_move_request() #send move request if we are facing the right direction
-                self.send_direction()
-                return
-            
-            # MOVE if both facing the right direction
-            self.send_move_request()
-            move_confirmation = None 
+            if not self.synced_plan:
+                # TURN if not facing the right direction
+                if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
+                    self.decision = [self.turn_toward(target_dir), tuple(self.pos)]
+                    self.send_direction() #send new direction after turning
+                    print(ANSI.YELLOW.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
+                    return
 
-            #reads most recent move confirmation in read_partner_messages list
-            if len(self.kb.read_partner_messages.get("move_forward")) > 0:
-                move_confirmation = self.kb.read_partner_messages.get("move_forward")[-1].content if self.kb.read_partner_messages.get("move_forward") else None
-                # print(f"Robot {self.id} has the move confirmation: {move_confirmation} sent at timestep {self.kb.read_partner_messages.get("move_forward")[-1].timestep}")
+                # we are currently facing the right direction
+                # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
+                if partner_dir != target_dir: # wait for partner before each move
+                    self.decision = ["wait", tuple(self.pos)]
+                    print(ANSI.YELLOW.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
+                    self.send_move_request() #send move request if we are facing the right direction
+                    self.send_direction()
+                    return
 
-            #if in the previous timestep partner was ready to move
-            if move_confirmation and move_confirmation == tuple(self.pos):
-                self.decision = ["move_forward", tuple(self.pos)]
-            else: #if partner was not ready to move in previous timestep
-                self.decision = ["wait", tuple(self.pos)]
-            print(ANSI.BLUE.value + f"Robot {self.id} and {self.partner.id} are moving forward to the {self.dir.name}" + ANSI.RESET.value)
-            return
+                #once this line is reached, both facing the right direction
+                if self.carrying and self.partner and not self.synced_plan:
+                    #propose a synced movement plan
+                    if not self.pending_sync:
+                        if self.partner and self.id < self.partner.id: #robot with lower ID always the sync proposer
+                            self.propose_sync_plan(self.timestep)
 
+                    #if a plan is already confirmed, go for it
+                    elif self.pending_sync["confirmed"] and self.timestep == self.pending_sync["t_sync"]:
+                        self.synced_plan = self.pending_sync
+                        self.pending_sync = None
+                        print(f"Robot {self.id}: activating sync plan at timestep {self.timestep}")
+                
+            #if already executing a synced plan, check the plan for what to do
+            if self.synced_plan:
+                plan = self.synced_plan
+                step_index = plan["current_step"]
+                planned_step_timestep = plan["t_sync"] + step_index
+                move = plan["plan"][step_index]
+                print(f"robot: {self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
+                if self.timestep == planned_step_timestep:
+                    #move = plan["plan"][step_index]
+                    self.decision = [move, tuple(self.pos)]
+                    plan["current_step"] += 1
+                    return
+                else:
+                    self.decision = ["wait", tuple(self.pos)]
+                    return
 
         # if all else fails just do what you want
-        self.decision = [self.next_move_to_target(), tuple(self.pos)]
-        return
+        if not (self.carrying and self.partner):
+            self.decision = [self.next_move_to_target(), tuple(self.pos)]
+            return
+        
+        else:
+            self.decision = ["wait", tuple(self.pos)]
 
     # Updated execute with coordinated move and prints
     def execute(self, timestep):
