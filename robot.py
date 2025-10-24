@@ -11,6 +11,8 @@ Message types:
             acknowledgement that proposer is partnered with acceptor
     - "restriction": (x,y)
             declaration that a cell is restricted (and should not be entered into/stayed in)
+    - "unrestriction": (x,y)
+            declaration that a cell is unrestricted (and can be entered into/stayed in)
 
 Partner message types:
     - "facing_direction": Dir
@@ -26,7 +28,7 @@ Partner message types:
             proposer sends in response to a sync proposal to let partner know plan is acknowledged
 """
 
-message_types = ["please_help", "partnered", "restriction"]
+message_types = ["please_help", "partnered", "restriction", "unrestriction"]
 partner_message_types = ["facing_direction", "move_forward", "pickup_req", "pickup_ack", "deposit_gold", "sync_proposal", "sync_ack"]
 
 class Message:
@@ -96,11 +98,11 @@ class KB:
     def clean_old_messages(self, timestep):
         for mtype, messages in self.read_messages.items():
             for message in messages:
-                if message.timestep <= (timestep - 10):
+                if message.timestep <= (timestep - 20):
                     messages.remove(message)
         for mtype, messages in self.read_partner_messages.items():
             for message in messages:
-                if message.timestep <= (timestep - 10):
+                if message.timestep <= (timestep - 20):
                     messages.remove(message)
 
     def clean_help_requests(self):
@@ -113,7 +115,26 @@ class KB:
     def clean_kb(self, timestep):
         self.clean_old_messages(timestep)
         self.clean_help_requests()
-   
+
+    def remove_restrictions(self):
+        if len(self.read_messages["unrestriction"]) == 0 or len(self.read_messages["restriction"]) == 0:
+            return
+        else:
+            for u_coords in self.read_messages["unrestriction"]:
+                for r_coords in self.read_messages["restriction"]:
+                    if r_coords.content == u_coords.content:
+                        if r_coords in self.read_messages["restriction"]: 
+                            self.read_messages["restriction"].remove(r_coords)
+                        if u_coords in self.read_messages["unrestriction"]: # in case it was removed before
+                            self.read_messages["unrestriction"].remove(u_coords)
+
+    def check_restriction(self, coordinates):
+        if len(self.read_messages["restriction"]) != 0:
+            for r_coords in self.read_messages["restriction"]:
+                if r_coords.content == coordinates:
+                    return True
+        return False
+
 class Robot:
     next_id = 1
 
@@ -146,7 +167,7 @@ class Robot:
         new_y = self.pos[1] + DIR_VECT[self.dir][1]
         if new_x < 0 or new_x >= GRID_SIZE or new_y < 0 or new_y >= GRID_SIZE:
             return self.pos
-        return [new_x, new_y]
+        return (new_x, new_y)
 
     def calc_dist(self, a, b): # axis_dist(self, a,b): #a and b are tuples (x1,y1) and (x2,y2)
         return round(math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2), 2)
@@ -247,7 +268,7 @@ class Robot:
                 print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
                 #maybe we should send to a different robot??
         else:
-            print("no available teammates for robot {self.id}")
+            print("No available teammates for Robot {self.id}")
                 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
@@ -271,6 +292,7 @@ class Robot:
             self.reset_pickup()
             tile.remove_gold()
             print(ANSI.MAGENTA.value + f"Robot {self.id} successfully picked up gold at {self.pos}!" + ANSI.RESET.value)
+            self.send_unrestriction()
             return
 
         if self.id < self.partner.id: # lesser ID
@@ -326,10 +348,10 @@ class Robot:
         self.synced_plan = None 
         self.grid.add_score(self.team)
 
-
     def set_target(self):
         help_requests = self.kb.read_messages.get("please_help", [])
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
+
         if len(gridteammates) > 1 and self.partner == None and self.kb.read_messages["restriction"]:
             for message in self.kb.read_messages.get("restriction"):
                 if self.pos == message.content:
@@ -420,6 +442,11 @@ class Robot:
     def send_restriction(self):
         """Send a message to all that a cell is restricted"""
         message = Message(timestep=self.timestep, mtype="restriction", content=tuple(self.pos))
+        self.send_to_all(message)
+
+    def send_unrestriction(self):
+        """Send a message to all that a cell is unrestricted"""
+        message = Message(timestep=self.timestep, mtype="unrestriction", content=tuple(self.pos))
         self.send_to_all(message)
     
     def send_help_request(self):
@@ -547,7 +574,6 @@ class Robot:
 
         return moves
 
-
     def propose_sync_plan(self,timestep):
         #propose move with partner including all timstep actions
         plan_delay = 10 #how many timesteps into the future the robots plan to move together
@@ -613,18 +639,24 @@ class Robot:
                 else:
                     print(f"Robot {self.id}: recieved late ack for t={t_sync}, ignoring")
 
+    def check_restriction(self, coordinates):
+        return self.kb.check_restriction(coordinates)
+
+    def remove_restrictions(self):
+        self.kb.remove_restrictions() 
 
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
         self.set_target()
+        self.remove_restrictions()
 
-        if len(gridteammates) > 1 and self.partner == None and self.kb.read_messages["restriction"]:
+        if len(gridteammates) > 1 and self.partner == None and len(self.kb.read_messages["restriction"]) != 0:
             for message in self.kb.read_messages.get("restriction"):
                 if tuple(self.pos) == message.content:
                     self.decision = [self.next_move_to_target(), tuple(self.pos)]
-                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizing it's unneeded" + ANSI.RESET.value)
+                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizing it must leave" + ANSI.RESET.value)
                     return
 
         # if standing on gold
@@ -713,9 +745,14 @@ class Robot:
 
         # if all else fails just do what you want
         if not (self.carrying and self.partner):
-            self.decision = [self.next_move_to_target(), tuple(self.pos)]
+            next_move = self.next_move_to_target()
+            print(ANSI.YELLOW.value + f"Robot {self.id} recognizes {self.next_position()}'s restriction is {self.check_restriction(self.next_position())}" + ANSI.RESET.value)
+            if self.check_restriction(self.next_position()) and next_move == "move_forward":
+                print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizing it can't enter cell {self.next_position()}" + ANSI.RESET.value)
+                self.decision = ["wait", tuple(self.pos)]
+            else:
+                self.decision = [next_move, tuple(self.pos)]
             return
-        
         else:
             self.decision = ["wait", tuple(self.pos)]
 
