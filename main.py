@@ -6,7 +6,7 @@ from robot import *
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((X_WINDOW_SIZE, Y_WINDOW_SIZE))
+    screen = pygame.display.set_mode(( X_WINDOW_SIZE, Y_WINDOW_SIZE))
     sim = Simulation()
 
     while True:  
@@ -16,12 +16,9 @@ def main():
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 sim.step()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_p:
-                sim.print_partner_messages()
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_m:
-                sim.print_team_messages()
         sim.draw(screen)
         pygame.display.flip()
 
 if __name__=="__main__":
     main()
+ 

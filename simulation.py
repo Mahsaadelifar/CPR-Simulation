@@ -12,9 +12,9 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots_unsync()
+        self.initialize_robots_horizontal() # change initialization (how the robots are aligned at the start)
 
-    def initialize_robots(self):
+    def initialize_robots_vertical(self):
         # Red team
         red_deposit_pos = [0,0]
         rx,ry = [0,1]
@@ -31,7 +31,7 @@ class Simulation:
             ry += 1
             by -= 1
 
-    def initialize_robots_unsync(self):
+    def initialize_robots_horizontal(self):
         # Red team
         red_deposit_pos = [0,0]
         rx,ry = [1,0]
@@ -175,7 +175,7 @@ class Simulation:
 
         print("PLANNING PHASE")
         for robot in self.grid.robots:
-            robot.plan()
+            robot.plan(self.timestep)
         print("END OF PLANNING PHASE")
 
         print("READING PHASE")

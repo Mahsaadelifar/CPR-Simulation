@@ -26,7 +26,8 @@ class Tile:
                 self.gold_acquirable = False
             self.gold_acquirable = True
         else:
-            raise ValueError("No gold on this tile.")
+            #raise ValueError("No gold on this tile.")
+            print("No gold on this tile.")
     
     def add_robot(self, robot):
         """Add a robot onto the tile"""
@@ -75,6 +76,7 @@ class Grid:
     def check_gold(self):
         for robot in self.robots:
             if robot.carrying and robot.partner and (robot.pos != robot.partner.pos):
+                print(f"DROPPED GOLD: robot {robot.id} and robot {robot.partner.id} dropped gold at {robot.pos}")
                 self.tiles[tuple(robot.pos)].add_gold()
                 robot.partner.carrying = False
                 robot.partner.partner = None
