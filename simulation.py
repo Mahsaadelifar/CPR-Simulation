@@ -12,7 +12,7 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots_vertical() # change initialization (how the robots are aligned at the start)
+        self.initialize_robots_horizontal() # change initialization (how the robots are aligned at the start)
 
     def initialize_robots_vertical(self):
         # Red team
@@ -55,10 +55,10 @@ class Simulation:
         self.grid.add_robot(robot=robot_1, pos=(1,0))
         self.grid.add_robot(robot=robot_2, pos=(1,1))
 
-        # robot_3 = Robot(grid=self.grid, team=Team.RED, position=[1,2], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
-        # robot_4 = Robot(grid=self.grid, team=Team.RED, position=[1,3], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
-        # self.grid.add_robot(robot=robot_3, pos=(1,2))
-        # self.grid.add_robot(robot=robot_4, pos=(1,3))
+        robot_3 = Robot(grid=self.grid, team=Team.RED, position=[1,2], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_4 = Robot(grid=self.grid, team=Team.RED, position=[1,3], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        self.grid.add_robot(robot=robot_3, pos=(1,2))
+        self.grid.add_robot(robot=robot_4, pos=(1,3))
 
     def draw_grid(self, screen):
         # Draw scores

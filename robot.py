@@ -40,11 +40,20 @@ class Message:
         self.acceptor = acceptor    # robot who accepts the message
     
     def __eq__(self, other):
-        return ((abs(self.timestep - other.timestep) < 5) and
-                self.mtype == other.mtype and
-                self.content == other.content and
-                self.proposer == other.proposer and
-                self.acceptor == other.acceptor)
+        if self.mtype == "please_help" or self.mtype == "partnered":
+            return (self.mtype == other.mtype and
+                    self.content == other.content and
+                    self.proposer == other.proposer)
+        elif self.mtype == "restriction" or self.mtype == "unrestriction":
+            return (self.mtype == other.mtype and
+                    self.content == other.content)
+        else:
+            return (self.timestep == other.timestep and
+                    self.mtype == other.mtype and
+                    self.content == other.content and
+                    self.countdown == other.countdown and
+                    self.proposer == other.proposer and
+                    self.acceptor == other.acceptor)
     
     def copy(self):
         return Message(timestep=self.timestep, mtype=self.mtype, content=self.content, proposer=self.proposer, acceptor=self.acceptor, countdown=self.countdown)
@@ -83,26 +92,22 @@ class KB:
     def read_message(self):
         for mtype, messages in self.received_messages.items():
             for message in messages:
-                if message.countdown == 0:
+                if message in self.read_messages[mtype]:
+                    messages.remove(message)
+                elif message.countdown == 0:
                     self.read_messages[mtype].append(message)
                     messages.remove(message)
-                message.decrement_countdown()
+                else:
+                    message.decrement_countdown()
         for pmtype, messages in self.received_partner_messages.items():
             for message in messages: 
-                if message.countdown == 0:
+                if message in self.read_partner_messages[pmtype]:
+                    messages.remove(message)
+                elif message.countdown == 0:
                     self.read_partner_messages[pmtype].append(message) # only keep the latest partner message
                     messages.remove(message)
-                message.decrement_countdown()
-    
-    def clean_old_messages(self, timestep):
-        for mtype, messages in self.read_messages.items():
-            for message in messages:
-                if message.timestep <= (timestep - 20):
-                    messages.remove(message)
-        for mtype, messages in self.read_partner_messages.items():
-            for message in messages:
-                if message.timestep <= (timestep - 20):
-                    messages.remove(message)
+                else:
+                    message.decrement_countdown()
 
     def clean_help_requests(self):
         for request in self.read_messages["please_help"]:
@@ -115,9 +120,9 @@ class KB:
         self.read_partner_messages["pickup_req"] = []
         self.read_partner_messages["pickup_ack"] = []
 
-    def clean_kb(self, timestep):
-        self.clean_old_messages(timestep)
-        self.clean_help_requests()
+    def clean_partner_messages(self):
+        self.received_partner_messages = {pmtype: [] for pmtype in partner_message_types}
+        self.read_partner_messages = {pmtype: [] for pmtype in partner_message_types} 
 
     def remove_restrictions(self):
         if len(self.read_messages["unrestriction"]) == 0 or len(self.read_messages["restriction"]) == 0:
@@ -262,15 +267,14 @@ class Robot:
     def pair_up(self, teammates, gold): # teammates is a list of teammates on the grid, gold is number of gold on the grid
         if self.partner is None and (len(teammates) > 0):
             self.send_partner_request(teammates[0])
-            #if recieved an affirmative response, pair up
-            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id: #are we allowed to access teammates.id??
+            # if recieved an affirmative response, pair up
+            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id: # let's assume robots have giant IDs painted on
                 self.partner = teammates[0]
-                self.send_restriction() # tell otehrs we already have a partner
+                self.send_restriction() # tell others we already have a partner
                 print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
-            #no affirmative reply
+            # no affirmative reply
             else:
                 print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
-                #maybe we should send to a different robot??
         else:
             print("No available teammates for Robot {self.id}")
 
@@ -364,6 +368,7 @@ class Robot:
         if self.pos != self.kb.deposit:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: Not at deposit point!" + ANSI.RESET.value)
         
+        self.clean_partner_messages()
         self.carrying = False
         self.partner = None
         self.move_sync_pending = None       
@@ -424,12 +429,11 @@ class Robot:
     
     ### MESSAGE ACTIONS ###
 
-    def clean_kb(self, timestep):
-        """Clean knowledge base"""
-        self.kb.clean_kb(timestep)
-
     def clean_pickup(self):
         self.kb.clean_pickup()
+
+    def clean_partner_messages(self):
+        self.kb.clean_partner_messages()
 
     def receive_message(self, message: Message):
         """Receive a message and store it in the KB."""
@@ -753,8 +757,6 @@ class Robot:
     def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
         gridrobots, gridteammates, gridgold = self.sense_current_tile()
-        
-        self.clean_kb(timestep)
 
         if self.partner:
             print(ANSI.GREEN.value + 
