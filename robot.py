@@ -112,6 +112,10 @@ class KB:
                     if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
                         self.read_messages["please_help"].remove(request)
 
+    def clean_pickup(self):
+        self.read_partner_messages["pickup_req"] = []
+        self.read_partner_messages["pickup_ack"] = []
+
     def clean_kb(self, timestep):
         self.clean_old_messages(timestep)
         self.clean_help_requests()
@@ -194,6 +198,7 @@ class Robot:
     def reset_pickup(self):
         self.pickup_t_sync = None
         self.pickup_proposed = False
+        self.clean_pickup()
         return
     
     ### ROBOT ACTIONS ###
@@ -269,38 +274,59 @@ class Robot:
                 #maybe we should send to a different robot??
         else:
             print("No available teammates for Robot {self.id}")
-                
+
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
         tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
 
         if len(tile_teammates) > 1:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: More than two robots in the cell!" + ANSI.RESET.value)
+            self.reset_pickup()
             return
         if not self.partner:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
+            self.reset_pickup()
             return
         if self.carrying:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: Already carrying gold!" + ANSI.RESET.value)
+            self.reset_pickup()
             return
         if tile_gold == 0:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
+            self.reset_pickup()
             return
 
-        if self.pickup_t_sync and self.timestep == self.pickup_t_sync: # successful pickup
-            self.carrying = True
+        if self.partner.decision[0] != "pickup_gold":
+            print(ANSI.RED.value + f"ERROR Robot {self.id} isn't in sync with its partner!" + ANSI.RESET.value)
             self.reset_pickup()
+            return
+
+        if self.timestep == self.pickup_t_sync: # successful pickup
+            self.carrying = True
             tile.remove_gold()
+            self.reset_pickup()
             print(ANSI.MAGENTA.value + f"Robot {self.id} successfully picked up gold at {self.pos}!" + ANSI.RESET.value)
             self.send_unrestriction()
             return
+        else:
+            self.reset_pickup()
+            print(ANSI.RED.value + f"Robot {self.id} failed to pick up gold at {self.pos}!" + ANSI.RESET.value)
 
+    def plan_pickup(self):
+        if self.pickup_t_sync:
+            if self.pickup_t_sync <= self.timestep:
+                print(ANSI.MAGENTA.value + f"Robot {self.id} can't fulfil pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                self.reset_pickup()
+                return
+            else:
+                print(ANSI.YELLOW.value + f"Robot {self.id} waiting to pickup gold at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                return
         if self.id < self.partner.id: # lesser ID
             pickup_ack_t = self.kb.read_partner_messages.get("pickup_ack")[-1].content if self.kb.read_partner_messages.get("pickup_ack") else None
             if pickup_ack_t: # acknowledgement of a pickup request from partner exists
                 if self.timestep < pickup_ack_t:
                     self.pickup_t_sync = pickup_ack_t
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                    print(ANSI.YELLOW.value + f"Robot {self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     return
                 else:
                     print(ANSI.MAGENTA.value + f"Robot {self.id} can't fulfil pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
@@ -319,7 +345,7 @@ class Robot:
             pickup_req_t = self.kb.read_partner_messages.get("pickup_req")[-1].content if self.kb.read_partner_messages.get("pickup_req") else None
             if pickup_req_t: # pickup request from partner exists
                 if self.timestep < pickup_req_t:
-                    self.send_pickup_confirmation(pickup_req_t)
+                    self.send_pickup_acknowledgement(pickup_req_t)
                     self.pickup_t_sync = pickup_req_t
                     print(ANSI.MAGENTA.value + f"Robot {self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     return
@@ -339,9 +365,6 @@ class Robot:
         if self.pos != self.kb.deposit:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: Not at deposit point!" + ANSI.RESET.value)
         
-        # self.send_deposit_request()
-        # deposit_confirmation = self.kb.read_partner_messages.get("deposit_gold")[-1].content if self.kb.read_partner_messages.get("deposit_gold") else None
-        # if deposit_confirmation:
         self.carrying = False
         self.partner = None
         self.pending_sync = None       
@@ -406,6 +429,9 @@ class Robot:
         """Clean knowledge base"""
         self.kb.clean_kb(timestep)
 
+    def clean_pickup(self):
+        self.kb.clean_pickup()
+
     def receive_message(self, message: Message):
         """Receive a message and store it in the KB."""
         self.kb.receive_message(message)
@@ -459,7 +485,7 @@ class Robot:
         message = Message(timestep=self.timestep, mtype="pickup_req", content=t_sync)
         self.send_to_partner(message)
 
-    def send_pickup_confirmation(self, t_sync):
+    def send_pickup_acknowledgement(self, t_sync):
         """Send a pickup_ack message to partner."""
         message = Message(timestep=self.timestep, mtype="pickup_ack", content=t_sync)
         self.send_to_partner(message)
@@ -674,8 +700,10 @@ class Robot:
                 return
             # PICKUP GOLD (has partner, not carrying)
             if not self.carrying and self.partner != None:
-                self.decision = ["pickup_gold", tuple(self.pos)]
-                print(ANSI.MAGENTA.value + f"Robot {self.id} and {self.partner.id} at {self.pos} picking up gold" + ANSI.RESET.value)
+                if timestep == self.pickup_t_sync:
+                    self.decision = ["pickup_gold", tuple(self.pos)]
+                else:
+                    self.decision = ["plan_pickup", tuple(self.pos)]
                 return
 
         # DEPOSIT GOLD if carrying and at deposit (already accounted for in the move sync)
@@ -775,6 +803,9 @@ class Robot:
         if self.decision[0] == "move_forward":
             self.move()
             self.sense()
+        
+        elif self.decision[0] == "plan_pickup":
+            self.plan_pickup()
             
         elif self.decision[0] == "pickup_gold":
             self.pickup_gold()
