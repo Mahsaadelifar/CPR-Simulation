@@ -7,7 +7,9 @@ from base import *
 Message types:
     - "please_help": (x,y)
             request for nearby robots to come to (x,y)
-    - "partnered": (x,y)
+    - "pairup_req": (x,y)
+            request for proposer to partner with acceptor
+    - "pairup_ack": (x,y)
             acknowledgement that proposer is partnered with acceptor
     - "restriction": (x,y)
             declaration that a cell is restricted (and should not be entered into/stayed in)
@@ -27,7 +29,7 @@ Partner message types:
             proposer sends in response to a sync proposal to let partner know plan is acknowledged
 """
 
-message_types = ["please_help", "partnered", "restriction", "unrestriction"]
+message_types = ["please_help", "pairup_req", "pairup_ack", "restriction", "unrestriction"]
 partner_message_types = ["facing_direction", "move_forward", "pickup_req", "pickup_ack", "move_sync_req", "move_sync_ack"]
 
 class Message:
@@ -110,15 +112,21 @@ class KB:
                     message.decrement_countdown()
 
     def clean_help_requests(self):
-        for request in self.read_messages["please_help"]:
-            for restriction in self.read_messages["restriction"]:
-                if request.content == restriction.content: 
-                    if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
-                        self.read_messages["please_help"].remove(request)
+        if self.read_messages["please_help"]:
+            for request in self.read_messages["please_help"]:
+                if self.read_messages["restriction"]:
+                    for restriction in self.read_messages["restriction"]:
+                        if request.content == restriction.content: 
+                            if request in self.read_messages["please_help"]: # not sure why there's an error about the request NOT being in the messages list; had to add this
+                                self.read_messages["please_help"].remove(request)
 
     def clean_pickup(self):
         self.read_partner_messages["pickup_req"] = []
         self.read_partner_messages["pickup_ack"] = []
+
+    def clean_pairup(self):
+        self.read_messages["pairup_req"] = []
+        self.read_messages["pairup_ack"] = []
 
     def clean_partner_messages(self):
         self.received_partner_messages = {pmtype: [] for pmtype in partner_message_types}
@@ -156,10 +164,13 @@ class Robot:
       self.timestep = timestep        # current timestep
 
       self.carrying = False       # True if carrying gold
-      self.decision = None        # [decision, position]
-      self.target_position = None # (x,y); the target position the robot is heading to
+      self.decision = "wait"
+      self.target_position = tuple(self.pos)
 
       self.partner = None         # the robot it is partnered with
+      self.pros_partner = None    # prospective partner
+      self.seeking_help = False
+      self.offering_help = False
 
       self.move_sync_pending = None     # {t_sync: int, plan: list, confirmed: bool, current_step: int}
       self.move_sync_plan = None        # plan ready to execute
@@ -189,8 +200,9 @@ class Robot:
         return closest_gold_pos
 
     def calc_target_dir(self):
-        dx = self.target_position[0] - self.pos[0]
-        dy = self.target_position[1] - self.pos[1]
+        target_position = self.target_position
+        dx = target_position[0] - self.pos[0]
+        dy = target_position[1] - self.pos[1]
 
         if abs(dx) > abs(dy):
             target_dir = Dir.EAST if dx > 0 else Dir.WEST
@@ -199,6 +211,16 @@ class Robot:
         
         return target_dir
 
+    def reset_partner(self):
+        self.partner = None
+        self.pros_partner = None
+        self.seeking_help = False
+        self.offering_help = False
+        self.move_sync_pending = None
+        self.move_sync_plan = None
+        self.move_sync_proposed = False
+        return
+    
     def reset_pickup(self):
         self.pickup_t_sync = None
         self.pickup_proposed = False
@@ -264,19 +286,62 @@ class Robot:
         else:
             pass
 
-    def pair_up(self, teammates, gold): # teammates is a list of teammates on the grid, gold is number of gold on the grid
-        if self.partner is None and (len(teammates) > 0):
-            self.send_partner_request(teammates[0])
-            # if recieved an affirmative response, pair up
-            if self.kb.read_messages.get("partnered") and self.kb.read_messages.get("partnered")[-1].proposer.id == teammates[0].id: # let's assume robots have giant IDs painted on
-                self.partner = teammates[0]
-                self.send_restriction() # tell others we already have a partner
-                print(ANSI.MAGENTA.value + f"Robot {self.id} successfully partnered with Robot {teammates[0].id}" + ANSI.RESET.value)  
-            # no affirmative reply
+    def pair_up(self, tileteammates):
+        if self.partner:
+            print(ANSI.RED.value + f"Robot {self.id} already has a partner" + ANSI.RESET.value)
+            return
+        if len(tileteammates) == 0:
+            print(ANSI.RED.value + f"Robot {self.id} has no teammates to partner with" + ANSI.RESET.value)
+            return
+        if self.pros_partner and self.pros_partner not in tileteammates:
+            self.reset_partner()
+        
+        if self.offering_help: # already responding to a help request
+            if self.kb.read_messages["pairup_ack"]:
+                partner = self.kb.read_messages["pairup_ack"][-1].proposer # only a single request would've been sent out
+                self.partner = partner
+                self.send_restriction() # restrict the tile
+                self.clean_pairup()
+                print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                return
             else:
-                print(ANSI.RED.value + f"Robot {self.id} waiting to partner with Robot {teammates[0].id}" + ANSI.RESET.value)
+                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for pairup acknowledgement from {self.pros_partner.id}" + ANSI.RESET.value)
+                return
+
+        # not offering help
+        if self.kb.read_messages["please_help"]: # to prevent two robots seeking for help at the same time (with delayed messages)
+            for request in self.kb.read_messages["please_help"]:
+                if request.content == tuple(self.pos) and request.proposer in tileteammates: # about to respond to a help request
+                    self.pros_partner = request.proposer
+                    self.send_pairup_request(self.pros_partner)
+                    self.offering_help = True
+                    print(ANSI.MAGENTA.value + f"Robot {self.id} sent pairup request to {self.pros_partner.id}" + ANSI.RESET.value)
+                    return
+
+        if self.seeking_help: # the one who sent out a help request
+            if self.kb.read_messages["pairup_req"]:
+                partner = self.kb.read_messages["pairup_req"][-1].proposer
+                self.partner = partner
+                self.send_pairup_acknowledgement(partner)
+                self.clean_pairup()
+                print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                return
+            else:
+                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for a pairup request" + ANSI.RESET.value)
+                return
         else:
-            print("No available teammates for Robot {self.id}")
+            # here out of pure coincidence, no related help request
+            tileteammates.sort(key=lambda x: x.id)
+            if self.id < tileteammates[0].id: # lowest ID becomes help seeker
+                self.seeking_help = True 
+                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for a pairup request" + ANSI.RESET.value)
+                return
+            else:
+                self.pros_partner = tileteammates[0]
+                self.send_pairup_request(tileteammates[0])
+                self.offering_help = True
+                print(ANSI.MAGENTA.value + f"Robot {self.id} sent pairup request to {self.pros_partner.id}" + ANSI.RESET.value)
+                return
 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
@@ -299,7 +364,7 @@ class Robot:
             self.reset_pickup()
             return
 
-        if self.partner.decision[0] != "pickup_gold":
+        if self.partner.decision != "pickup_gold":
             print(ANSI.RED.value + f"ERROR Robot {self.id} isn't in sync with its partner!" + ANSI.RESET.value)
             self.reset_pickup()
             return
@@ -368,66 +433,127 @@ class Robot:
         if self.pos != self.kb.deposit:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: Not at deposit point!" + ANSI.RESET.value)
         
-        self.clean_partner_messages()
         self.carrying = False
-        self.partner = None
-        self.move_sync_pending = None       
-        self.move_sync_plan = None 
         self.grid.add_score(self.team)
+        self.clean_partner_messages()
+        self.reset_partner()
 
-    def set_target(self):
-        help_requests = self.kb.read_messages.get("please_help", [])
-        gridrobots, gridteammates, gridgold = self.sense_current_tile()
+    def set_target(self): # when 1) responding to help requests, 2) leaving restricted tiles, 3) travelling to nearest gold, 4) exploring randomly
+        help_requests = self.kb.read_messages.get("please_help", None)
+        restricted_tiles = self.kb.read_messages.get("restriction", None)
+        tilerobots, tileteammates, tilegold = self.sense_current_tile()
 
-        if len(gridteammates) > 1 and self.partner == None and self.kb.read_messages["restriction"]:
-            for message in self.kb.read_messages.get("restriction"):
-                if self.pos == message.content:
-                    self.target_position = (0,0) # just get outta there
-                    return
+        # higher priorities happen latter as to override the decisions
 
-        # if you have a partner and gold, then your target is the deposit
-        if self.carrying and (self.partner != None):
-            self.target_position = tuple(self.kb.deposit)
-            return
-
-        # otherwise, respond to help requests
-        elif help_requests:
-            help_message = help_requests[0] # currently selecting first help message recieved, should ideally loop through and select the closest message
-            if self.calc_dist(self.pos, help_message.content) < 5:
+        if help_requests: # RESPOND to help requests
+            help_message = help_requests[0]
+            if self.calc_dist(self.pos, help_message.content) < 5: # distance threshold
                 self.target_position = tuple(help_message.content)
-                return
     
-        else:
-            if self.closest_gold(): # if nothing else to do, target is closest gold
-                self.target_position = tuple(self.closest_gold())
-            else:  # if no gold in sight
-                self.target_position = self.next_position()
-                
-                if self.target_position == self.pos:
-                    x, y = self.pos
+        if self.closest_gold(): # GO TO NEAREST GOLD
+            self.target_position = tuple(self.closest_gold())
+        else:  # RUN AROUND
+            self.target_position = self.next_position()
+            if self.target_position == self.pos:
+                x, y = self.pos
+                new_x, new_y = x, y # default to current coordinates
+                if x == 0:
+                    new_x = GRID_SIZE - 1
+                elif x == GRID_SIZE - 1:
+                    new_x = 0
+                if y == 0:
+                    new_y = GRID_SIZE - 1
+                elif y == GRID_SIZE - 1:
+                    new_y = 0
+                self.target_position = (new_x, new_y)
 
-                    # default to current coordinates
-                    new_x, new_y = x, y
+        if restricted_tiles:
+            for tile in restricted_tiles:
+                if self.pos == tile.content: # LEAVE
+                    self.target_position = self.kb.deposit
+        
+        self.decision = self.next_move_to_target()
 
-                    if x == 0:
-                        new_x = GRID_SIZE - 1
-                    elif x == GRID_SIZE - 1:
-                        new_x = 0
-
-                    if y == 0:
-                        new_y = GRID_SIZE - 1
-                    elif y == GRID_SIZE - 1:
-                        new_y = 0
-
-                    self.target_position = (new_x, new_y)
+        if self.decision == "move_forward" and self.check_restriction(self.next_position()):
+            print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
+            self.decision = ["wait", tuple(self.pos)] # overrides decision
+        
+        return
     
     def next_move_to_target(self):
-        target_dir = self.calc_target_dir()
-        if self.dir == target_dir:
+        if self.pos == self.target_position:
+            return "wait"
+        if self.dir == self.calc_target_dir():
             return "move_forward"
-        return self.turn_toward(target_dir)
-    
+        return self.turn_toward(self.calc_target_dir())
+
+    def coordinate_moves(self):
+        print(ANSI.MAGENTA.value + f"Robot {self.id} is coordinating moves" + ANSI.RESET.value)
+        self.target_position = tuple(self.kb.deposit)
+
+        # handling sync messages for partners
+        self.handle_sync_messages(self.timestep)
+
+        # get orientation of partnered robots to allign
+
+        # handling direction messages
+        self.send_direction()
+        partner_dir = self.kb.read_partner_messages.get("facing_direction")[-1].content if self.kb.read_partner_messages.get("facing_direction") else None
+        target_dir = self.calc_target_dir()
+
+        if not self.move_sync_plan:
+            # TURN if not facing the right direction
+            if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
+                self.decision = self.turn_toward(target_dir)
+                self.send_direction() # send new direction after turning
+                print(ANSI.MAGENTA.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
+                return
+
+            # we are currently facing the right direction
+            # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
+            if partner_dir != target_dir: # wait for partner before each move
+                self.decision = "wait"
+                print(ANSI.MAGENTA.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
+                self.send_move_request() #send move request if we are facing the right direction
+                self.send_direction()
+                return
+
+            # once this line is reached, both facing the right direction
+            if self.carrying and self.partner and not self.move_sync_plan:
+                # propose a synced movement plan
+                if not self.move_sync_pending:
+                    if self.partner and self.id < self.partner.id: # robot with lower ID always the sync proposer
+                        self.propose_sync_plan(self.timestep)
+
+                # if a plan is already confirmed, go for it
+                elif self.move_sync_pending["confirmed"] and self.timestep == self.move_sync_pending["t_sync"]:
+                    self.move_sync_plan = self.move_sync_pending
+                    self.move_sync_pending = None
+                    print(ANSI.MAGENTA.value + f"Robot {self.id}: activating sync plan at timestep {self.timestep}" + ANSI.RESET.value)
+            
+        # if already executing a synced plan, check the plan for what to do
+        if self.move_sync_plan:
+            plan = self.move_sync_plan
+            step_index = plan["current_step"]
+            planned_step_timestep = plan["t_sync"] + step_index
+            move = plan["plan"][step_index]
+            print(f"robot: {self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
+            if self.timestep == planned_step_timestep:
+                # move = plan["plan"][step_index]
+                self.decision = move
+                plan["current_step"] += 1
+                return
+            else:
+                self.decision = "wait"
+                return
+
     ### MESSAGE ACTIONS ###
+
+    def clean_help_requests(self):
+        self.kb.clean_help_requests()
+
+    def clean_pairup(self):
+        self.kb.clean_pairup()
 
     def clean_pickup(self):
         self.kb.clean_pickup()
@@ -453,8 +579,11 @@ class Robot:
     def send_to_all(self, message: Message):
         """Send a message to all robots (within the same team) on the grid."""
         for robot in self.grid.robots:
-            if robot != self and robot.team == self.team:
-                self.send_message(message, robot)
+            if robot.team == self.team:
+                if message.mtype == "restriction" or message.mtype == "unrestriction": # send to everyone
+                    self.send_message(message, robot)
+                if robot != self:
+                    self.send_message(message, robot)
 
     def send_to_partner(self, message: Message):
         """Send a message to the partner robot."""
@@ -463,9 +592,14 @@ class Robot:
         else:
             print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to send message to!" + ANSI.RESET.value)
 
-    def send_partner_request(self, acceptor: 'Robot'):
-        """Send a partnered message to the acceptor robot."""
-        message = Message(timestep=self.timestep, mtype="partnered", content=tuple(self.pos)) # content is the position, but we only need to check for proposer/acceptor
+    def send_pairup_request(self, acceptor: 'Robot'):
+        """Send a pairup request to the acceptor robot."""
+        message = Message(timestep=self.timestep, mtype="pairup_req", content=tuple(self.pos)) # content is the position, but we only need to check for proposer/acceptor
+        self.send_message(message, acceptor)
+
+    def send_pairup_acknowledgement(self, acceptor: 'Robot'):
+        """Send a pairup acknowledgement to the acceptor robot."""
+        message = Message(timestep=self.timestep, mtype="pairup_ack", content=tuple(self.pos)) # content is the position, but we only need to check for proposer/acceptor
         self.send_message(message, acceptor)
     
     def send_restriction(self):
@@ -577,10 +711,10 @@ class Robot:
         return moves
 
     def propose_sync_plan(self,timestep):
-        #propose move with partner including all timstep actions
-        plan_delay = 10 #how many timesteps into the future the robots plan to move together
-        #can change plan delay later, maybe see if larger/smaller values would work better
-        #10 seems to be a pretty decent value so far
+        # propose move with partner including all timstep actions
+        plan_delay = 10 # how many timesteps into the future the robots plan to move together
+        # can change plan delay later, maybe see if larger/smaller values would work better
+        # 10 seems to be a pretty decent value so far
 
         if not self.partner:
             return
@@ -605,7 +739,7 @@ class Robot:
     def handle_sync_messages(self,timestep):
         msgs = self.kb.read_partner_messages
 
-        #handle proposals for sync
+        # handle proposals for sync
         if msgs["move_sync_req"]:
             latest = msgs["move_sync_req"][-1]
             t_sync, plan = latest.content
@@ -629,7 +763,7 @@ class Robot:
             else:
                 print(f"Robot {self.id}: rejected expired plan proposed at (t={t_sync}, now={timestep})")
         
-        #responding to partner acknowledgement
+        # responding to partner acknowledgement
         if msgs["move_sync_ack"]:
             ack = msgs["move_sync_ack"][-1]
             t_sync = ack.content[0]
@@ -650,113 +784,55 @@ class Robot:
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
-        gridrobots, gridteammates, gridgold = self.sense_current_tile()
-        self.set_target()
+        tilerobots, tileteammates, tilegold = self.sense_current_tile()
+        self.clean_help_requests()
         self.remove_restrictions()
 
-        if len(gridteammates) > 1 and self.partner == None and len(self.kb.read_messages["restriction"]) != 0:
-            for message in self.kb.read_messages.get("restriction"):
-                if tuple(self.pos) == message.content:
-                    self.decision = [self.next_move_to_target(), tuple(self.pos)]
-                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it must leave" + ANSI.RESET.value)
-                    return
-
-        # if standing on gold
-        if gridgold > 0:
-            # SEND HELP REQUEST (no other teammates)
-            if not self.partner and len(gridteammates) == 0:
-                self.decision = ["wait", tuple(self.pos)]
-                self.send_help_request()
-                print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
+        if self.partner:
+            if self.carrying: # COORDINATE MOVES if carrying gold with partner
+                self.coordinate_moves()
                 return
-            # PAIR UP (has teammates, no partner)
-            if not self.partner and len(gridteammates) > 0:
-                self.decision = ["pair_up", tuple(self.pos)]
-                print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up" + ANSI.RESET.value)
-                return
-            # PICKUP GOLD (has partner, not carrying)
-            if not self.carrying and self.partner != None:
-                if timestep == self.pickup_t_sync:
-                    self.decision = ["pickup_gold", tuple(self.pos)]
-                else:
-                    self.decision = ["plan_pickup", tuple(self.pos)]
-                return
-
-        # COORDINATED MOVE if carrying gold with partner
-        if self.carrying and self.partner:
-
-            #handling sync messagesfor partners
-            self.handle_sync_messages(self.timestep)
-
-            #get orientation of partnered robots to allign
-
-            #handling direction messages
-            self.send_direction()
-            partner_dir = self.kb.read_partner_messages.get("facing_direction")[-1].content if self.kb.read_partner_messages.get("facing_direction") else None
-            target_dir = self.calc_target_dir()
-
-            if not self.move_sync_plan:
-                # TURN if not facing the right direction
-                if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
-                    self.decision = [self.turn_toward(target_dir), tuple(self.pos)]
-                    self.send_direction() #send new direction after turning
-                    print(ANSI.YELLOW.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
-                    return
-
-                # we are currently facing the right direction
-                # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
-                if partner_dir != target_dir: # wait for partner before each move
-                    self.decision = ["wait", tuple(self.pos)]
-                    print(ANSI.YELLOW.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
-                    self.send_move_request() #send move request if we are facing the right direction
-                    self.send_direction()
-                    return
-
-                #once this line is reached, both facing the right direction
-                if self.carrying and self.partner and not self.move_sync_plan:
-                    #propose a synced movement plan
-                    if not self.move_sync_pending:
-                        if self.partner and self.id < self.partner.id: #robot with lower ID always the sync proposer
-                            self.propose_sync_plan(self.timestep)
-
-                    #if a plan is already confirmed, go for it
-                    elif self.move_sync_pending["confirmed"] and self.timestep == self.move_sync_pending["t_sync"]:
-                        self.move_sync_plan = self.move_sync_pending
-                        self.move_sync_pending = None
-                        print(f"Robot {self.id}: activating sync plan at timestep {self.timestep}")
-                
-            #if already executing a synced plan, check the plan for what to do
-            if self.move_sync_plan:
-                plan = self.move_sync_plan
-                step_index = plan["current_step"]
-                planned_step_timestep = plan["t_sync"] + step_index
-                move = plan["plan"][step_index]
-                print(f"robot: {self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
-                if self.timestep == planned_step_timestep:
-                    #move = plan["plan"][step_index]
-                    self.decision = [move, tuple(self.pos)]
-                    plan["current_step"] += 1
-                    return
-                else:
-                    self.decision = ["wait", tuple(self.pos)]
-                    return
-
-        # if all else fails just do what you want
-        if not (self.carrying and self.partner):
-            next_move = self.next_move_to_target()
-            if self.check_restriction(self.next_position()) and next_move == "move_forward":
-                print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
-                self.decision = ["wait", tuple(self.pos)]
             else:
-                self.decision = [next_move, tuple(self.pos)]
-            return
+                if tilegold > 0: # PICKUP GOLD if has partner and not carrying
+                    if timestep == self.pickup_t_sync:
+                        self.decision = "pickup_gold"
+                        self.target_position = tuple(self.pos)
+                    else:
+                        self.decision = "plan_pickup"
+                        self.target_position = tuple(self.pos)
+                    return
+                else: # UNPAIR if gold ~mysteriously~ disappears
+                    self.reset_partner()
+                    self.decision = "wait"
+                    self.target_position = tuple(self.pos)
+                    return
         else:
-            self.decision = ["wait", tuple(self.pos)]
+            if len(self.kb.read_messages["restriction"]) != 0:
+                for message in self.kb.read_messages.get("restriction"):
+                    if tuple(self.pos) == message.content: # LEAVE if on restricted tile
+                        self.set_target() # sets decision and target position
+                        return
+            if tilegold > 0:
+                if len(tileteammates) > 0: # PAIR UP if has teammates
+                    self.decision = "pair_up"
+                    self.target_position = tuple(self.pos)
+                    print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up" + ANSI.RESET.value)
+                    return
+                else: # SEND HELP REQUEST if no other teammates
+                    self.decision = "wait"
+                    self.target_position = tuple(self.pos)
+                    self.send_help_request()
+                    self.seeking_help = True
+                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
+                    return
+            else: # EXPLORE if all else is unfulfilled
+                self.set_target() # sets decision and target position
+                print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is exploring" + ANSI.RESET.value)
+                return
 
-    # Updated execute with coordinated move and prints
     def execute(self, timestep):
         tile = self.grid.tiles[tuple(self.pos)]
-        gridrobots, gridteammates, gridgold = self.sense_current_tile()
+        tilerobots, tileteammates, tilegold = self.sense_current_tile()
 
         if self.partner:
             print(ANSI.GREEN.value + 
@@ -767,32 +843,32 @@ class Robot:
                 f"robot: {self.id}, partner: None, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
 
-        if self.decision[0] == "move_forward":
+        if self.decision == "move_forward":
             self.move()
             self.sense()
         
-        elif self.decision[0] == "plan_pickup":
+        elif self.decision == "plan_pickup":
             self.plan_pickup()
             
-        elif self.decision[0] == "pickup_gold":
+        elif self.decision == "pickup_gold":
             self.pickup_gold()
 
-        elif self.decision[0] == "wait":
+        elif self.decision == "wait":
             pass
 
-        elif self.decision[0] == "turn_ccw":
+        elif self.decision == "turn_ccw":
             self.turn("ccw")
             self.sense()
         
-        elif self.decision[0] == "turn_cw":
+        elif self.decision == "turn_cw":
             self.turn("cw")
             self.sense()
         
-        elif self.decision[0] == "deposit_gold":
+        elif self.decision == "deposit_gold":
             self.deposit_gold()
         
-        elif self.decision[0] == "pair_up":
-            self.pair_up(gridteammates, gridgold)
+        elif self.decision == "pair_up":
+            self.pair_up(tileteammates)
             
         
         
