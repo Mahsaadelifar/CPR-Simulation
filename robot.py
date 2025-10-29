@@ -293,8 +293,6 @@ class Robot:
         if len(tileteammates) == 0:
             print(ANSI.RED.value + f"Robot {self.id} has no teammates to partner with" + ANSI.RESET.value)
             return
-        if self.pros_partner and self.pros_partner not in tileteammates:
-            self.reset_partner()
         
         if self.offering_help: # already responding to a help request
             if self.kb.read_messages["pairup_ack"]:
@@ -368,6 +366,12 @@ class Robot:
             print(ANSI.RED.value + f"ERROR Robot {self.id} isn't in sync with its partner!" + ANSI.RESET.value)
             self.reset_pickup()
             return
+        if tile_gold == 1:
+            for robot in tile.robots:
+                if robot.team != self.team and robot.partner and robot.decision == "pickup_gold":
+                    print(ANSI.RED.value + f"ERROR Robot {self.id} is fighting with other robots for the gold!" + ANSI.RESET.value)
+                    self.reset_pickup()
+                    return
 
         if self.timestep == self.pickup_t_sync: # successful pickup
             self.carrying = True
@@ -442,6 +446,7 @@ class Robot:
         help_requests = self.kb.read_messages.get("please_help", None)
         restricted_tiles = self.kb.read_messages.get("restriction", None)
         tilerobots, tileteammates, tilegold = self.sense_current_tile()
+        self.reset_partner()
 
         # higher priorities happen latter as to override the decisions
 
