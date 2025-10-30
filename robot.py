@@ -318,6 +318,7 @@ class Robot:
                     print(ANSI.MAGENTA.value + f"Robot {self.id} sent pairup request to {self.pros_partner.id}" + ANSI.RESET.value)
                     return
 
+
         if self.seeking_help: # the one who sent out a help request
             if self.kb.read_messages["pairup_req"]:
                 partner = self.kb.read_messages["pairup_req"][-1].proposer
@@ -789,9 +790,12 @@ class Robot:
         self.kb.remove_restrictions() 
 
     def check_teammate_there(self):
-        #If the sensed shows a robot already at the target tile, return true 
-        if self.target_position in self.kb.sensed and self.kb.sensed[self.target_position]["robots"]:
-            if self.kb.sensed[self.target_position]["robots"][0].id != self.id: #make sure that the robot there is not itself, pretty sure this is legal
+        #return true is there is EXACTLY ONEEEE other teammate there
+        # and that teammate is not itself
+        #If the sensed shows another robot already at the target tile the robot is heading to/already on, return true 
+        if self.target_position in self.kb.sensed:
+            robots = self.kb.sensed[self.target_position]["robots"]
+            if len(robots) == 1 and robots[0].id != self.id: #make sure that the robot there is not itself, pretty sure this is legal
                 return True
 
 ###__________________________________________________________________________###
