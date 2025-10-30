@@ -15,7 +15,7 @@ def main():
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                sim.step()
+                sim.step()  
         sim.draw(screen)
         pygame.display.flip()
 
