@@ -804,35 +804,55 @@ class Robot:
         #track number of robots seen at the target the moment the target position enters the FOV
         #target memory is cleared once robot leaves the target tile/ maybe once its target changes?
 
+        
         target = self.target_position
 
-        if self.pos == target: #don't add to memory if already on tile and recorded once
-            return
+        #case 1: robot is on the target tile, record then stop updating via rewrite
+        if self.pos == self.target_position:
+            #if last record already made
+            if target not in self.kb.target_memory or not self.kb.target_memory[target] or self.kb.target_memory[target][-1]["timestamp"] != self.timestep:
+                #record final entry
+                _, teammates, _ = self.sense_current_tile()
+                count = len(teammates) #not using kb sensed bc it includes ourselves in the robot
+                self.kb.target_memory[target] = [{
+                    "timestamp": self.timestep,
+                    "robot_count": count
+                }]
+            return  # stop updating after having already made the last record
 
-        #if target currently in FOV, record the number of robots seen and timestep
+
+        #case 2: robot not on target tile
+        # if target currently in FOV, record the number of robots seen and timestep
         if target in self.kb.sensed and target not in self.kb.target_memory: 
             count = len(self.kb.sensed[target]["robots"])
-            if target not in self.kb.target_memory:
-                self.kb.target_memory[target] = []
             self.kb.target_memory[target].append({
             "timestamp": self.timestep,
             "robot_count": count
             })
         
-        #if robot left target tile, clear the target memory
+        #case 3: if robot left target tile, clear the target memory
         if self.pos != target and target in self.kb.target_memory:
             del self.kb.target_memory[target]
 
 
     def check_coincidental_dragon_meeting(self):
+        _,teammates,_ = self.sense_current_tile()
         dragon_history = self.kb.target_memory.get(tuple(self.pos),[])
+        
+
         if not dragon_history: #no memory
             return False
         
         prev_timestep_dragoncount = dragon_history[-2]["robot_count"]
-        curr_timestep_dragoncount = dragon_history[-1]["robot_count"] #most recent entry should represent current timestep as well
+        latest_timestep_dragoncount = dragon_history[-1]["robot_count"] #number of robot at the instant the robot enters the tile (in case in the following timesteps paired robots/ other robots decide to enter)
+        current_timestep_dragoncount = len(teammates)
 
-        return prev_timestep_dragoncount == 0 and curr_timestep_dragoncount > 0
+        if current_timestep_dragoncount == latest_timestep_dragoncount: #no robots have entered or left yet since first entry
+            return prev_timestep_dragoncount == 0 and latest_timestep_dragoncount > 0 #collision detected if at entry timestep robots go from 0->multiple
+        elif current_timestep_dragoncount > latest_timestep_dragoncount: #if some robots have entered in the meantime
+            return True #situation has not been resolved if there are MORE robots now
+        else: #there are less robots at the current timestep than at time of entry -> some robots have left yay!!
+            return False #situation is RESOLVED, assuming robots have been kicked out by the restriction scheme after a pair is formed
     
     def dragon_discussion_results(self):
         dragon_history = self.kb.target_memory.get(self.pos,[])
