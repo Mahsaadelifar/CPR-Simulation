@@ -229,10 +229,11 @@ class Robot:
     
     ### ROBOT ACTIONS ###
 
-    def sense(self): # !!! not really working!!!!!
+    def sense(self): # !!! not really working!!!!! is it working now??? 
         """Sense the surrounding tiles and update KB."""
         tile = self.grid.tiles[tuple(self.pos)]
         self.kb.sensed[tuple(self.pos)] = {"deposit": tile.deposit, "gold": tile.gold, "robots": tile.robots}
+        
 
         for dx,dy in SENSE_VECT[self.dir]:
             tile = self.grid.tiles[(self.pos[0]+dx, self.pos[1]+dy)] if (self.pos[0]+dx, self.pos[1]+dy) in self.grid.tiles else None
@@ -242,6 +243,7 @@ class Robot:
                 objects["gold"] = tile.gold
                 objects["robots"] = tile.robots
                 self.kb.sensed[(self.pos[0]+dx, self.pos[1]+dy)] = objects
+
 
     def sense_current_tile(self): # sense_tile_values(self):
         robots = self.kb.sensed.get(tuple(self.pos)).get("robots", [])
@@ -786,6 +788,12 @@ class Robot:
     def remove_restrictions(self):
         self.kb.remove_restrictions() 
 
+    def check_teammate_there(self):
+        #If the sensed shows a robot already at the target tile, return true 
+        if self.target_position in self.kb.sensed and self.kb.sensed[self.target_position]["robots"]:
+            if self.kb.sensed[self.target_position]["robots"][0].id != self.id: #make sure that the robot there is not itself, pretty sure this is legal
+                return True
+
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
@@ -823,13 +831,22 @@ class Robot:
                     self.target_position = tuple(self.pos)
                     print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up" + ANSI.RESET.value)
                     return
-                else: # SEND HELP REQUEST if no other teammates
-                    self.decision = "wait"
-                    self.target_position = tuple(self.pos)
-                    self.send_help_request()
-                    self.seeking_help = True
-                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
-                    return
+                else: # SEND HELP REQUEST if no other teammates AND robot does not "see" already on the tile
+                    if not self.check_teammate_there(): #no teammate seen by the robot at the tile, check function returns true if there is a robot
+                        self.decision = "wait"
+                        self.target_position = tuple(self.pos)
+                        self.send_help_request()
+                        self.seeking_help = True
+                        print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
+                        return
+                    else: #teammate seen by the robot at the tile, but robot has not recieved a help request from the other robot
+                        self.decision = "wait"
+                        self.target_position = tuple(self.pos)
+                        self.seeking_help = False
+                        print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} sensed a teammate on the tile and will not send a help request" + ANSI.RESET.value)
+                        return
+                        
+
             else: # EXPLORE if all else is unfulfilled
                 self.set_target() # sets decision and target position
                 print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is exploring" + ANSI.RESET.value)
