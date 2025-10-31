@@ -181,6 +181,8 @@ class Robot:
       self.pickup_proposed = False      # proposed pickup
       self.pickup_t_sync = None         # int; timestep
 
+      self.should_I_send_help_request = True
+
     ### HELPER FUNCTIONS ###
 
     def next_position(self):
@@ -248,11 +250,14 @@ class Robot:
 
 
     def sense_current_tile(self): # sense_tile_values(self):
-        robots = self.kb.sensed.get(tuple(self.pos)).get("robots", [])
+        return self.sense_tile(self.pos)
+    
+    def sense_tile(self, coords): #coords is (x,y) of tile to check
+        robots = self.kb.sensed.get(tuple(coords)).get("robots", [])
         teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
-        gold = self.kb.sensed.get(tuple(self.pos)).get("gold", 0)
+        gold = self.kb.sensed.get(tuple(coords)).get("gold", 0)
 
-        return (robots, teammates, gold)
+        return robots, teammates, gold
 
     def turn(self, turn_dir): # turn cw or ccw
         dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
@@ -462,6 +467,15 @@ class Robot:
     
         if self.closest_gold(): # GO TO NEAREST GOLD
             self.target_position = tuple(self.closest_gold())
+            if tuple(self.closest_gold()) == self.next_position(): #not sure if I was supposed to add this here or inside the actual closest_gold function, but I thought this would be easier to find
+                #if the tile we are about to enter has gold, check if there are robots there and decide whether or not to send help request
+                self.check_teammate_there(self.next_position())
+                if self.check_teammate_there(self.next_position()) == True:
+                    self.should_I_send_help_request = False
+                else:
+                    self.should_I_send_help_request = True
+
+
         else:  # RUN AROUND
             self.target_position = self.next_position()
             if self.target_position == self.pos:
@@ -791,14 +805,12 @@ class Robot:
     def remove_restrictions(self):
         self.kb.remove_restrictions() 
 
-    def check_teammate_there(self):
-        #return true if there is exactly one teammate in the next tile to be moved into
-        # and that teammate is not itself
+    def check_teammate_there(self, position): #position is a tuple (x,y) you want to check if there is a teammate or not
+        #return true if there is at least one teammate on that tile, and that teammate is not itself
         #If the sensed shows another robot already at the target tile the robot is heading to/already on, return true 
-        if self.target_position in self.kb.sensed:
-            robots = self.kb.sensed[self.target_position]["robots"]
-            if len(robots) == 1 and robots[0].id != self.id: #make sure that the robot there is not itself, pretty sure this is legal
-                return True
+        robots_there, teammates_there, gold_there = self.sense_tile(position)
+
+        return(len(teammates_there) > 0) 
             
     def update_target_memory(self):
         #track number of robots seen at the target the moment the target position enters the FOV
@@ -847,11 +859,13 @@ class Robot:
         current_timestep_dragoncount = len(teammates)
 
         if current_timestep_dragoncount == latest_timestep_dragoncount: #no robots have entered or left yet since first entry
-            return prev_timestep_dragoncount == 0 and latest_timestep_dragoncount > 0 #collision detected if at entry timestep robots go from 0->multiple
+            if prev_timestep_dragoncount == 0 and latest_timestep_dragoncount > 0: #collision detected if at entry timestep robots go from 0->multiple
+                return True
         elif current_timestep_dragoncount > latest_timestep_dragoncount: #if some robots have entered in the meantime
             return True #situation has not been resolved if there are MORE robots now
         else: #there are less robots at the current timestep than at time of entry -> some robots have left yay!!
             return False #situation is RESOLVED, assuming robots have been kicked out by the restriction scheme after a pair is formed
+
     
     def dragon_discussion_results(self):
         dragon_history = self.kb.target_memory.get(self.pos,[])
@@ -908,24 +922,18 @@ class Robot:
                     if tuple(self.pos) == message.content: # LEAVE if on restricted tile
                         self.set_target() # sets decision and target position
                         return
+            
             if tilegold > 0:
-                #if arrived on a tile with gold at the same time a multiple other robots
 
-                    #decision is wait
-                    #send out help request
-                    #wait for help messages to be recieved from all robots on tile + make sure help request position is current position
-                    #once all messages recieved, check if your id is highest or lowest. If highest, send pairup request. if lowest, wait for pairup request
-                    #other robots will be kicked out once pairing between only those two is successful
-
+                #check for multiple robots entering tile at the same timestep
                 if self.check_coincidental_dragon_meeting():
                     self.decision = "wait"
-                    #self.target_position = tuple(self.pos) do I need this? it won't change if I don't update it right??
-                    self.send_help_request()
+                    if self.should_I_send_help_request == True: #If robot on the tile is invovled in the collision, it will send a help request
+                        self.send_help_request()
                     group_help_requests, number_of_requests_to_recieve = self.dragon_discussion_results() #list of latest help request message objects from each teammate on the tile, number of messages to recieve to make sure all robots at the tile are represented
 
                     if group_help_requests and len(group_help_requests) == number_of_requests_to_recieve: #recieved help request from all other robots at tile
                             min_id = min(msg.proposer.id for msg in group_help_requests)
-                            #max_id = max(msg.proposer.id for msg in group_help_requests)
                             if self.id < min_id: #if we are the robot with the smallest id at the tile
                                 print(f"Robot {self.id} is the dominant dragon in a multi-dragon collision at {self.pos}. Sending pairup request to robot {group_help_requests[-1].proposer.id}")
                                 #send a pairup request to any robot we'd like (here we choose the robot that sent the latest message recieved)
@@ -934,25 +942,25 @@ class Robot:
                         print(f"Robot {self.id} is involved in a multi-dragon collision at {self.pos}. Waiting to coordinate. {len(group_help_requests)}/{number_of_requests_to_recieve} messages recieved")
                     return
                 
-                if len(tileteammates) > 0: # PAIR UP if has teammates
+                if len(tileteammates) > 0: # PAIR UP if has teammates and not involved in a collision
                     self.decision = "pair_up"
                     self.target_position = tuple(self.pos)
                     print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up" + ANSI.RESET.value)
                     return
-                else: # SEND HELP REQUEST if no other teammates 
-                    if self.check_teammate_there() and self.pos == self.target_position: #teammate seen by the robot at the tile, but robot has not recieved a help request from the other robot
-                        self.decision = "wait"
-                        self.target_position = tuple(self.pos)
-                        self.seeking_help = False
-                        print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} sensed a teammate on this tile previously and will not send a help request" + ANSI.RESET.value)
-                        return
-                    else: #if you did not see a teammate there, send a help request
-                        self.decision = "wait"
-                        self.target_position = tuple(self.pos)
+
+                else: #if no teammates there at the moment
+                    self.decision = "wait"
+                    self.target_position = tuple(self.pos)
+                    if self.should_I_send_help_request == True:
                         self.send_help_request()
                         self.seeking_help = True
                         print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
-                        return
+                    else:
+                        self.target_position = tuple(self.pos)
+                        self.seeking_help = False
+                        print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} sensed a teammate on this tile previously and will not send a help request" + ANSI.RESET.value)
+                    return
+        
                         
 
             else: # EXPLORE if all else is unfulfilled
