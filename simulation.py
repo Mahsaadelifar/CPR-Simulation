@@ -12,7 +12,7 @@ class Simulation:
         self.grid = Grid()
         self.timestep = 0
 
-        self.initialize_robots_horizontal() # change initialization (how the robots are aligned at the start)
+        self.initialize_robots_test() # change initialization (how the robots are aligned at the start)
 
     def initialize_robots_vertical(self):
         # Red team

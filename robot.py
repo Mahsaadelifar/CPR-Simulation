@@ -492,14 +492,16 @@ class Robot:
 
         if restricted_tiles:
             for tile in restricted_tiles:
-                if self.pos == tile.content: # LEAVE
-                    self.target_position = self.kb.deposit
+                if tuple(self.pos) == tile.content: # LEAVE
+                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it must leave cell {self.next_position()}" + ANSI.RESET.value)
+                    self.target_position = tuple(self.kb.deposit)
         
         self.decision = self.next_move_to_target()
 
         if self.decision == "move_forward" and self.check_restriction(self.next_position()):
             print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
-            self.decision = ["wait", tuple(self.pos)] # overrides decision
+            self.target_position = tuple(self.pos)
+            self.decision = "wait" # overrides decision
         
         return
     
