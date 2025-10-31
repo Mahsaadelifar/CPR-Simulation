@@ -803,8 +803,6 @@ class Robot:
     def update_target_memory(self):
         #track number of robots seen at the target the moment the target position enters the FOV
         #target memory is cleared once robot leaves the target tile/ maybe once its target changes?
-
-        
         target = self.target_position
 
         #case 1: robot is on the target tile, record then stop updating via rewrite
@@ -825,6 +823,7 @@ class Robot:
         # if target currently in FOV, record the number of robots seen and timestep
         if target in self.kb.sensed and target not in self.kb.target_memory: 
             count = len(self.kb.sensed[target]["robots"])
+            self.kb.target_memory[target] = []
             self.kb.target_memory[target].append({
             "timestamp": self.timestep,
             "robot_count": count
