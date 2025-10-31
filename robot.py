@@ -460,6 +460,21 @@ class Robot:
 
         # higher priorities happen latter as to override the decisions
 
+        # RUN AROUND
+        self.target_position = self.next_position()
+        if self.target_position == self.pos:
+            x, y = self.pos
+            new_x, new_y = x, y # default to current coordinates
+            if x == 0:
+                new_x = GRID_SIZE - 1
+            elif x == GRID_SIZE - 1:
+                new_x = 0
+            if y == 0:
+                new_y = GRID_SIZE - 1
+            elif y == GRID_SIZE - 1:
+                new_y = 0
+            self.target_position = (new_x, new_y)
+
         if help_requests: # RESPOND to help requests
             help_message = help_requests[0]
             if self.calc_dist(self.pos, help_message.content) < 5: # distance threshold
@@ -474,22 +489,6 @@ class Robot:
                     self.should_I_send_help_request = False
                 else:
                     self.should_I_send_help_request = True
-
-
-        else:  # RUN AROUND
-            self.target_position = self.next_position()
-            if self.target_position == self.pos:
-                x, y = self.pos
-                new_x, new_y = x, y # default to current coordinates
-                if x == 0:
-                    new_x = GRID_SIZE - 1
-                elif x == GRID_SIZE - 1:
-                    new_x = 0
-                if y == 0:
-                    new_y = GRID_SIZE - 1
-                elif y == GRID_SIZE - 1:
-                    new_y = 0
-                self.target_position = (new_x, new_y)
 
         if restricted_tiles:
             for tile in restricted_tiles:
@@ -597,7 +596,7 @@ class Robot:
         """Send a message to a robot."""
         message.proposer = self
         message.acceptor = acceptor
-        message.countdown = random.randint(1,3)
+        message.countdown = random.randint(1, DELAY)
         acceptor.receive_message(message)
 
     def send_to_all(self, message: Message):
