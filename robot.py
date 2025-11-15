@@ -463,7 +463,7 @@ class Robot:
                         print(ANSI.CYAN.value + f"Robot {self.id} is passive in a collision at {self.pos}. Waiting for pairup request from Robot {self.pros_partner.id}" + ANSI.RESET.value)
                         return
         else:
-            print(ANSI.CYAN.value + f"Robot {self.id} is involved in a collision at {self.pos}. {num_received_requests}/{num_total_requests} requests recieved" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.id} is involved in a collision at {self.pos}. {num_received_requests}/{num_total_requests} requests received" + ANSI.RESET.value)
 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
@@ -843,7 +843,7 @@ class Robot:
                     self.move_sync_pending["confirmed"] = True
                     print(f"Robot {self.id}: sync plan confirmed for timestep {t_sync}")
                 else:
-                    print(f"Robot {self.id}: recieved late ack for t={t_sync}, ignoring")
+                    print(f"Robot {self.id}: received late ack for t={t_sync}, ignoring")
 
     def check_restriction(self, coordinates):
         return self.kb.check_restriction(coordinates)
