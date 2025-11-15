@@ -364,17 +364,13 @@ class Robot:
             pass
 
     def pair_up(self):
-        _, tile_teammates, _ = self.sense_current_tile()
+        _, tile_teammates, tile_gold = self.sense_current_tile()
         if self.partner:
             print(ANSI.RED.value + f"Robot {self.id} already has a partner" + ANSI.RESET.value)
             return
         if len(tile_teammates) == 0:
             print(ANSI.RED.value + f"Robot {self.id} has no teammates to partner with" + ANSI.RESET.value)
             return 
-
-        if not self.should_help:
-            print(ANSI.CYAN.value + f"Robot {self.id} choosing not to help." + ANSI.RESET.value)
-            return
         
         if self.offering_help: # already responding to a help request
             if self.kb.read_messages["pairup_ack"]:
@@ -418,6 +414,7 @@ class Robot:
         if self.num_collision_requests == 0:
             viable_teammates = [robot for robot in tile_robots if (robot != self and robot.team == self.team and robot.carrying == False)] # assuming that robots can see when others are carrying gold (i.e. partnered up)
             num_total_requests = len(viable_teammates)
+            self.num_collision_requests = num_total_requests
         else:
             num_total_requests = self.num_collision_requests
 
@@ -853,14 +850,16 @@ class Robot:
 
     def check_empty(self):
         """Check if there exists a teammate in the next position."""
-        teammates = self.kb.sensed[self.next_position()]["robots"]
+        robots = self.kb.sensed.get(self.next_position()).get("robots", [])
+        teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
         self.empty_target = len(teammates) == 0
 
         return self.empty_target
     
     def check_multiple(self):
         """Check if there exists multiple teammates in the next position."""
-        teammates = self.kb.sensed[self.next_position()]["robots"]
+        robots = self.kb.sensed.get(self.next_position()).get("robots", [])
+        teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
         self.should_help = len(teammates) < 2 # if multiple teammates already exist, then don't try to help 
 
         return not self.should_help
@@ -915,10 +914,16 @@ class Robot:
                     return
                 
                 if len(tile_teammates) > 0: # PAIR UP if has teammates and not involved in a collision
-                    self.decision = "pair_up"
-                    self.target_position = tuple(self.pos)
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up in normal circumstances" + ANSI.RESET.value)
-                    return
+                    if not self.should_help:
+                        self.decision = "wait"
+                        self.target_position = tuple(self.pos)
+                        print(ANSI.MAGENTA.value + f"Robot {self.id} choosing not to help." + ANSI.RESET.value)
+                        return
+                    else:
+                        self.decision = "pair_up"
+                        self.target_position = tuple(self.pos)
+                        print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up in normal circumstances" + ANSI.RESET.value)
+                        return
 
                 else: # if no teammates there at the moment
                     self.decision = "wait"
