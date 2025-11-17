@@ -575,7 +575,6 @@ class Robot:
     def set_target(self): # when 1) responding to help requests, 2) leaving restricted tiles, 3) travelling to nearest gold, 4) exploring randomly
         help_requests = self.kb.read_messages.get("please_help", None)
         restricted_tiles = self.kb.read_messages.get("restriction", None)
-        tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
         self.reset_partner()
 
         # higher priorities happen latter as to override the decisions
@@ -600,27 +599,29 @@ class Robot:
             help_message = help_requests[0]
             if self.calc_dist(self.pos, help_message.content) < 5: # distance threshold
                 self.target_position = tuple(help_message.content)
+                print(ANSI.CYAN.value + f"Robot {self.id} considering help requests" + ANSI.RESET.value)
     
         if self.closest_gold(): # GO TO NEAREST GOLD
             self.target_position = tuple(self.closest_gold())
+            print(ANSI.CYAN.value + f"Robot {self.id} considering nearest gold at {self.closest_gold()}" + ANSI.RESET.value)
 
         if restricted_tiles:
             for tile in restricted_tiles:
                 if tuple(self.pos) == tile.content: # LEAVE
-                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it must leave cell {self.next_position()}" + ANSI.RESET.value)
+                    print(ANSI.CYAN.value + f"Robot {self.id} recognizes it must leave cell {self.next_position()}" + ANSI.RESET.value)
                     self.target_position = tuple(self.kb.deposit)
 
         self.decision = self.next_move_to_target()
 
         if self.decision == "move_forward" and self.check_restriction(self.next_position()):
-            print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.id} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
             self.target_position = tuple(self.pos)
             self.decision = "wait" # overrides decision
 
         if self.target_position == self.next_position() and self.target_position != tuple(self.pos): # check if target tile has existing teammates
             self.check_multiple()
             self.check_empty()
-            print(ANSI.YELLOW.value + f"{self.id} senses empty tile: {self.check_empty()}" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.id} considering the next tile" + ANSI.RESET.value)
         
         return
     
@@ -934,8 +935,9 @@ class Robot:
                     return
 
             else: # EXPLORE if all else is unfulfilled
-                self.set_target() # sets decision and target position
                 print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is exploring" + ANSI.RESET.value)
+                self.set_target() # sets decision and target position
+                print(ANSI.CYAN.value + "---" + ANSI.RESET.value)
                 return
 
     def execute(self):
