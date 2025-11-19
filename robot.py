@@ -156,12 +156,13 @@ class Robot:
 
     def __init__(self, grid: Grid, team: Team, position: list, direction: Dir, deposit: list, timestep: int = 0):
       self.grid = grid
-      self.id = Robot.next_id; Robot.next_id += 1
       self.team = team
       self.pos = position             # [x,y]
       self.dir = direction            # Dir
       self.kb = KB(deposit = deposit) # !!! might have a better way to keep track of this
       self.timestep = timestep        # current timestep
+
+      self.id = int(self.calc_dist(self.pos,self.kb.deposit)) #need to assign id here after pos and deposit has been assigned
 
       self.carrying = False       # True if carrying gold
       self.decision = "wait"
