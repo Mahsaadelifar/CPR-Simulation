@@ -181,6 +181,7 @@ class Robot:
       self.failed_pickup = False        # if the pickup failed; to ensure that the partner doesn't succeed either
 
       self.should_help = True          # next (target) tile is empty; if so, be allowed to send help request
+      self.previously_empty = True
       self.empty_target = True
       self.num_collision_requests = 0   # number of total help requests needed during a collision
 
@@ -851,9 +852,10 @@ class Robot:
 
     def check_empty(self):
         """Check if there exists a teammate in the next position."""
+        self.previously_empty = self.empty_target
         robots = self.kb.sensed.get(self.next_position()).get("robots", [])
-        teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
-        self.empty_target = len(teammates) == 0
+        teammates_nexttile = [robot for robot in robots if (robot != self and robot.team == self.team)]
+        self.empty_target = len(teammates_nexttile) == 0
 
         return self.empty_target
     
@@ -870,7 +872,7 @@ class Robot:
         _, tile_teammates, _ = self.sense_current_tile()
         if self.seeking_help: # first one on the tile; i.e. self.empty_target returns True
             return False
-        if self.empty_target:
+        if self.previously_empty:
             if len(tile_teammates) > 0: # self is not counted
                 return True
         return False
@@ -881,6 +883,7 @@ class Robot:
         tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
         self.clean_help_requests()
         self.remove_restrictions()
+        self.check_empty() #check if next tile is empty, used for collision checks
 
         if self.partner:
             if self.carrying: # COORDINATE MOVES if carrying gold with partner
