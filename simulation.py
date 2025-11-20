@@ -51,14 +51,14 @@ class Simulation:
     def initialize_robots_test(self):
         red_deposit_pos = [0,0]
         robot_1 = Robot(grid=self.grid, team=Team.RED, position=[1,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
-        robot_2 = Robot(grid=self.grid, team=Team.RED, position=[1,1], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        robot_2 = Robot(grid=self.grid, team=Team.RED, position=[2,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
         self.grid.add_robot(robot=robot_1, pos=(1,0))
-        self.grid.add_robot(robot=robot_2, pos=(1,1))
+        self.grid.add_robot(robot=robot_2, pos=(2,0))
 
-        # robot_3 = Robot(grid=self.grid, team=Team.RED, position=[1,2], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
-        # robot_4 = Robot(grid=self.grid, team=Team.RED, position=[1,3], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
-        # self.grid.add_robot(robot=robot_3, pos=(1,2))
-        # self.grid.add_robot(robot=robot_4, pos=(1,3))
+        # robot_3 = Robot(grid=self.grid, team=Team.RED, position=[3,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        # robot_4 = Robot(grid=self.grid, team=Team.RED, position=[4,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+        # self.grid.add_robot(robot=robot_3, pos=(3,0))
+        # self.grid.add_robot(robot=robot_4, pos=(4,0))
 
     def draw_grid(self, screen):
         # Draw scores
@@ -178,13 +178,13 @@ class Simulation:
             robot.plan(self.timestep)
         print("END OF PLANNING PHASE")
 
-        print("READING PHASE")
+        # print("READING PHASE")
         for robot in self.grid.robots:
             robot.read_message()
         
-        self.print_team_messages()
-        self.print_partner_messages()
-        print("END OF READING PHASE")
+        # self.print_team_messages()
+        # self.print_partner_messages()
+        # print("END OF READING PHASE")
     
         print("EXECUTION PHASE")
         for robot in self.grid.robots:

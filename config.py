@@ -18,7 +18,7 @@ X_WINDOW_SIZE = GRID_SIZE * CELL_SIZE
 Y_WINDOW_SIZE = GRID_SIZE * CELL_SIZE + SCORES_HEIGHT
 FPS = 2
 ROBOTS_PER_TEAM = 5
-GOLDS = 2
+GOLDS = 10
 DELAY = 3
 
 # Colors
@@ -39,3 +39,6 @@ class ANSI(Enum):
     BLUE = "\u001b[34m"
     MAGENTA = "\u001b[35m"
     CYAN = "\u001b[36m"
+    LIGHT_BLUE = "\033[1;34m"
+    LIGHT_PURPLE = "\033[1;35m"
+
