@@ -150,13 +150,13 @@ class Simulation:
         
     def print_team_messages(self):
         for robot in self.grid.robots:
-            print(ANSI.MAGENTA.value + f"Robot {robot.id} messages received:" + ANSI.RESET.value)
+            print(ANSI.MAGENTA.value + f"Robot {robot.team.name}{robot.id} messages received:" + ANSI.RESET.value)
             for mtype, messages in robot.kb.received_messages.items():
                 for message in messages:
                     print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
         print("==============================")
         for robot in self.grid.robots:
-            print(ANSI.MAGENTA.value + f"Robot {robot.id} messages read:" + ANSI.RESET.value)
+            print(ANSI.MAGENTA.value + f"Robot {robot.team.name}{robot.id} messages read:" + ANSI.RESET.value)
             for mtype, messages in robot.kb.read_messages.items():
                 for message in messages:
                     print(ANSI.MAGENTA.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
@@ -164,13 +164,13 @@ class Simulation:
 
     def print_partner_messages(self):
         for robot in self.grid.robots:
-            print(ANSI.CYAN.value + f"Robot {robot.id} partner messages received:" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {robot.team.name}{robot.id} partner messages received:" + ANSI.RESET.value)
             for pmtype, messages in robot.kb.received_partner_messages.items():
                 for message in messages:
                     print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
         print("==============================")
         for robot in self.grid.robots:
-            print(ANSI.CYAN.value + f"Robot {robot.id} partner messages read:" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {robot.team.name}{robot.id} partner messages read:" + ANSI.RESET.value)
             for pmtype, messages in robot.kb.read_partner_messages.items():
                 for message in messages:
                     print(ANSI.CYAN.value + f"  timestep: {message.timestep}, type: {message.mtype}, content: {message.content}, proposer: {message.proposer.id}, countdown: {message.countdown}" + ANSI.RESET.value)
