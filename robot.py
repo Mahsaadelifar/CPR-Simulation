@@ -219,19 +219,6 @@ class Robot:
         return target_dir
 
     def calculate_moves_to_deposit(self):
-        def copy_calc_target_dir(from_pos,to_pos):
-            fx,fy = from_pos
-            tx,ty = to_pos
-            dx = tx-fx
-            dy = ty-fy
-
-            if dx != 0:
-                return Dir.EAST if dx > 0 else Dir.WEST
-            elif dy != 0:
-                return Dir.SOUTH if dy > 0 else Dir.NORTH
-            else:
-                return None
-        
         def copy_turn_toward(curr_dir, target_dir):
             dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
             curr_index = dir_order.index(curr_dir)
@@ -294,18 +281,28 @@ class Robot:
         self.move_sync_pending = None
         self.move_sync_plan = None
         self.move_sync_proposed = False
-        self.should_help = True
-        self.empty_target = True
         self.num_collision_requests = 0
         return
     
     def reset_pickup(self):
+        print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables" + ANSI.RESET.value)
         self.pickup_t_sync = None
         self.pickup_proposed = False
         self.failed_pickup = False
         self.clean_pickup()
         return
     
+    def check_partner(self): # check if partner is on the same tile
+        _, tile_teammates, _ = self.sense_current_tile()
+        if self.partner:
+            if self.partner not in tile_teammates:
+                self.reset_partner()
+                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing partner" + ANSI.RESET.value)
+        if self.pros_partner:
+            if self.pros_partner not in tile_teammates:
+                self.reset_partner()
+                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing pros_partner" + ANSI.RESET.value)
+
     ### ROBOT ACTIONS ###
 
     def sense(self): # !!! not really working!!!!! is it working now??? 
@@ -347,7 +344,6 @@ class Robot:
         # if not facing the right direction, TURN!!!
         dir_order = [Dir.NORTH, Dir.EAST, Dir.SOUTH, Dir.WEST]
         curr_index = dir_order.index(self.dir) # index of current direction
-        cw_dir = dir_order[(curr_index + 1) % 4]
         ccw_dir  = dir_order[(curr_index - 1) % 4]
 
         if target_direction == ccw_dir:
@@ -480,11 +476,14 @@ class Robot:
         if len(tile_teammates) > 1:
             print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: More than two robots in the cell!" + ANSI.RESET.value)
             self.reset_pickup()
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; more than two robots" + ANSI.RESET.value)
             self.failed_pickup = True
             return
         if not self.partner:
             print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
             self.reset_pickup()
+            self.reset_partner()
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner/pickup variables; no partner to pick up gold with" + ANSI.RESET.value)
             self.failed_pickup = True
             return
         if self.carrying:
@@ -495,23 +494,29 @@ class Robot:
         if tile_gold == 0:
             print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No gold to pick up!" + ANSI.RESET.value)
             self.reset_pickup()
+            self.reset_partner()
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner/pickup variables; no gold to pick up" + ANSI.RESET.value)
             self.failed_pickup = True
             return
 
         if self.partner.decision != "pickup_gold":
             print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id} isn't in sync with its partner!" + ANSI.RESET.value)
             self.reset_pickup()
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; not in sync" + ANSI.RESET.value)
             self.failed_pickup = True
             return
         if self.partner.failed_pickup:
-            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}'s partner failed to pick up!'" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}'s partner failed to pick up!" + ANSI.RESET.value)
             self.reset_pickup()
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; partner failed to pickup" + ANSI.RESET.value)
+            self.failed_pickup = True
             return
         if tile_gold == 1:
             for robot in tile.robots:
                 if robot.team != self.team and robot.partner and robot.decision == "pickup_gold":
                     print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id} is fighting with other robots for the gold!" + ANSI.RESET.value)
                     self.reset_pickup()
+                    print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; fighting other robots" + ANSI.RESET.value)
                     return
 
         if self.timestep == self.pickup_t_sync: # successful pickup
@@ -519,17 +524,22 @@ class Robot:
             tile.remove_gold()
             self.reset_pickup()
             print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} successfully picked up gold at {self.pos}!" + ANSI.RESET.value)
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; successful pickup" + ANSI.RESET.value)
             self.send_unrestriction()
             return
         else:
             self.reset_pickup()
             print(ANSI.RED.value + f"Robot {self.team.name}{self.id} failed to pick up gold at {self.pos}!" + ANSI.RESET.value)
+            print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; unsuccessful pickup" + ANSI.RESET.value)
 
     def plan_pickup(self):
+        self.failed_pickup = False
+
         if self.pickup_t_sync:
             if self.pickup_t_sync <= self.timestep:
                 print(ANSI.RED.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                 self.reset_pickup()
+                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; unsuccessful pickup" + ANSI.RESET.value)
                 return
             else:
                 print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} waiting to pickup gold at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
@@ -544,6 +554,7 @@ class Robot:
                 else:
                     print(ANSI.RED.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     self.reset_pickup()
+                    print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; unsuccessful pickup" + ANSI.RESET.value)
                     return
             elif self.pickup_proposed == False: # no acknowledgement of a pickup request from partner; pickup request not proposed
                 t_sync = self.timestep + 10
@@ -565,6 +576,7 @@ class Robot:
                 else:
                     print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     self.reset_pickup()
+                    print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting pickup variables; unsuccessful pickup" + ANSI.RESET.value)
                     return
             else:
                 print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} waiting for a pickup request!" + ANSI.RESET.value)
@@ -582,11 +594,15 @@ class Robot:
         self.grid.add_score(self.team)
         self.clean_partner_messages()
         self.reset_partner()
+        print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; deposited gold" + ANSI.RESET.value)
 
     def set_target(self): # when 1) responding to help requests, 2) leaving restricted tiles, 3) travelling to nearest gold, 4) exploring randomly
         help_requests = self.kb.read_messages.get("please_help", None)
         restricted_tiles = self.kb.read_messages.get("restriction", None)
+        self.clean_pairup()
         self.reset_partner()
+        self.reset_pickup()
+        print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner/pickup variables; set target" + ANSI.RESET.value)
 
         # higher priorities happen latter as to override the decisions
 
@@ -632,7 +648,7 @@ class Robot:
         if self.target_position == self.next_position() and self.target_position != tuple(self.pos): # check if target tile has existing teammates
             self.check_multiple()
             self.check_empty()
-            print(ANSI.CYAN.value + f"Robot {self.id} considering the next tile" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} considering the next tile" + ANSI.RESET.value)
         
         return
     
@@ -644,7 +660,7 @@ class Robot:
         return self.turn_toward(self.calc_target_dir())
 
     def coordinate_moves(self):
-        print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is coordinating moves" + ANSI.RESET.value)
+        print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} is coordinating moves" + ANSI.RESET.value)
         self.target_position = tuple(self.kb.deposit)
 
         # handling sync messages for partners
@@ -662,14 +678,14 @@ class Robot:
             if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
                 self.decision = self.turn_toward(target_dir)
                 self.send_direction() # send new direction after turning
-                print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
+                print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
                 return
 
             # we are currently facing the right direction
             # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
             if partner_dir != target_dir: # wait for partner before each move
                 self.decision = "wait"
-                print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
+                print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
                 self.send_move_request() #send move request if we are facing the right direction
                 self.send_direction()
                 return
@@ -685,7 +701,7 @@ class Robot:
                 elif self.move_sync_pending["confirmed"] and self.timestep == self.move_sync_pending["t_sync"]:
                     self.move_sync_plan = self.move_sync_pending
                     self.move_sync_pending = None
-                    print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id}: activating sync plan at timestep {self.timestep}" + ANSI.RESET.value)
+                    print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id}: activating sync plan at timestep {self.timestep}" + ANSI.RESET.value)
             
         # if already executing a synced plan, check the plan for what to do
         if self.move_sync_plan:
@@ -693,7 +709,7 @@ class Robot:
             step_index = plan["current_step"]
             planned_step_timestep = plan["t_sync"] + step_index
             move = plan["plan"][step_index]
-            print(f"robot: {self.team.name}{self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
+            print(ANSI.CYAN.value + f"Robot: {self.team.name}{self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}" + ANSI.RESET.value)
             if self.timestep == planned_step_timestep:
                 # move = plan["plan"][step_index]
                 self.decision = move
@@ -707,6 +723,22 @@ class Robot:
 
     def clean_help_requests(self):
         self.kb.clean_help_requests()
+        gold = self.kb.sensed.get(tuple(self.pos)).get("gold", None)
+
+        if gold == 0: 
+            # remove help requests associated with a tile if no gold on tile
+            if self.kb.read_messages["please_help"]:
+                for request in self.kb.read_messages["please_help"]:
+                    if request.content == tuple(self.pos): 
+                        if request in self.kb.read_messages["please_help"]:
+                            self.kb.read_messages["please_help"].remove(request)
+
+            # remove restrictions associated with a tile if no gold on tile
+            if self.kb.read_messages["restriction"]:
+                for r_coords in self.kb.read_messages["restriction"]:
+                    if r_coords.content == tuple(self.pos):
+                        if r_coords in self.kb.read_messages["restriction"]: 
+                            self.kb.read_messages["restriction"].remove(r_coords)
 
     def clean_pairup(self):
         self.kb.clean_pairup()
@@ -888,9 +920,10 @@ class Robot:
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
-        tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
+        _, tile_teammates, tile_gold = self.sense_current_tile()
         self.clean_help_requests()
         self.remove_restrictions()
+        self.check_partner()
         if self.next_position() == self.target_position and tuple(self.pos) != self.target_position:
             self.check_empty() # check if next tile is empty, used for collision checks
 
@@ -909,6 +942,8 @@ class Robot:
                     return
                 else: # UNPAIR if gold ~mysteriously~ disappears
                     self.reset_partner()
+                    self.reset_pickup()
+                    print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner/pickup variables; gold disappeared" + ANSI.RESET.value)
                     self.decision = "wait"
                     self.target_position = tuple(self.pos)
                     return
@@ -955,13 +990,17 @@ class Robot:
     def execute(self):
         if self.partner:
             print(ANSI.GREEN.value + 
-                f"Robot: {self.team.name}{self.id}, partner: {self.partner.team.name}{self.partner.id}, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
+                f"Robot: {self.team.name}{self.id}, partner: {self.partner.team.name}{self.partner.id}, target: {self.target_position}, decision: {self.decision}, position: {tuple(self.pos)}, team_deposit: {self.kb.deposit}" +
+                ANSI.RESET.value)
+        elif self.pros_partner:
+            print(ANSI.GREEN.value + 
+                f"Robot: {self.team.name}{self.id}, pros_partner: {self.pros_partner.team.name}{self.pros_partner.id}, target: {self.target_position}, decision: {self.decision}, position: {tuple(self.pos)}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
         else:
             print(ANSI.GREEN.value + 
-                f"Robot: {self.team.name}{self.id}, partner: None, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
+                f"Robot: {self.team.name}{self.id}, target: {self.target_position}, decision: {self.decision}, position: {tuple(self.pos)}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
-
+            
         if self.decision == "move_forward":
             self.move()
             self.sense()
