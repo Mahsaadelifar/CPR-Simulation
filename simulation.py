@@ -48,6 +48,17 @@ class Simulation:
             rx += 1
             bx -= 1
     
+    def initialize_robots_horizontal_red(self):
+        # Red team
+        red_deposit_pos = [0,0]
+        rx,ry = [1,0]
+        for i in range(ROBOTS_PER_TEAM):
+            r_robot = Robot(grid=self.grid, team=Team.RED, position=[rx,ry], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)
+
+            self.grid.add_robot(robot=r_robot, pos=(rx,ry))
+
+            rx += 1
+    
     def initialize_robots_test(self):
         red_deposit_pos = [0,0]
         robot_1 = Robot(grid=self.grid, team=Team.RED, position=[1,0], direction = Dir.SOUTH, deposit = red_deposit_pos, timestep=self.timestep)

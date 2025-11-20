@@ -294,30 +294,37 @@ class Robot:
     
     def check_partner(self): # check if partner is on the same tile
         _, tile_teammates, _ = self.sense_current_tile()
-        if self.partner:
+        if self.partner != None:
             if self.partner not in tile_teammates:
+                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing partner, Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
                 self.reset_partner()
-                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing partner" + ANSI.RESET.value)
-        if self.pros_partner:
+                self.clean_pairup()
+                
+        if self.pros_partner != None:
             if self.pros_partner not in tile_teammates:
+                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing pros_partner, Robot {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                 self.reset_partner()
-                print(ANSI.ITALIC.value + f"Robot {self.team.name}{self.id} resetting partner variables; missing pros_partner" + ANSI.RESET.value)
+                self.clean_pairup()
 
     ### ROBOT ACTIONS ###
 
     def sense(self): # !!! not really working!!!!! is it working now??? 
         """Sense the surrounding tiles and update KB."""
         tile = self.grid.tiles[tuple(self.pos)]
-        self.kb.sensed[tuple(self.pos)] = {"deposit": tile.deposit, "gold": tile.gold, "robots": tile.robots}
+        self.kb.sensed[tuple(self.pos)] = {"deposit": tile.deposit, "gold": tile.gold, "robots": tile.robots.copy()}
 
         for dx,dy in SENSE_VECT[self.dir]:
-            tile = self.grid.tiles[(self.pos[0]+dx, self.pos[1]+dy)] if (self.pos[0]+dx, self.pos[1]+dy) in self.grid.tiles else None
+            tx = self.pos[0]+dx
+            ty = self.pos[1]+dy
+            if not (0 <= tx < GRID_SIZE and 0 <= ty < GRID_SIZE):
+                continue
+            tile = self.grid.tiles[(tx, ty)] if (tx, ty) in self.grid.tiles else None
             if tile: #and (self.pos[0]+dx, self.pos[1]+dy) not in self.kb.sensed: commented out so it writes over old info
                 objects = {}
-                objects["deposit"] = tile.deposit 
+                objects["deposit"] = tile.deposit
                 objects["gold"] = tile.gold
-                objects["robots"] = tile.robots
-                self.kb.sensed[(self.pos[0]+dx, self.pos[1]+dy)] = objects
+                objects["robots"] = tile.robots.copy()
+                self.kb.sensed[(tx, ty)] = objects
 
     def sense_current_tile(self):
         robots = self.kb.sensed.get(tuple(self.pos)).get("robots", [])
@@ -374,6 +381,7 @@ class Robot:
             if self.kb.read_messages["pairup_ack"]:
                 partner = self.kb.read_messages["pairup_ack"][-1].proposer # only a single request would've been sent out
                 self.partner = partner
+                self.pros_partner = partner
                 self.send_restriction() # restrict the tile
                 self.clean_pairup()
                 print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
@@ -396,6 +404,7 @@ class Robot:
             if self.kb.read_messages["pairup_req"]:
                 partner = self.kb.read_messages["pairup_req"][-1].proposer
                 self.partner = partner
+                self.pros_partner = partner
                 self.send_pairup_acknowledgement(partner)
                 self.clean_pairup()
                 print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
@@ -413,15 +422,22 @@ class Robot:
             print(ANSI.RED.value + f"Robot {self.team.name}{self.id} already has a partner" + ANSI.RESET.value)
             return
         if len(tile_teammates) == 0:
-            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} has no teammates to partner with" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} has no teammates to collide with" + ANSI.RESET.value)
             return 
         
         if self.num_collision_requests == 0:
             viable_teammates = [robot for robot in tile_robots if (robot != self and robot.team == self.team and robot.carrying == False)] # assuming that robots can see when others are carrying gold (i.e. partnered up)
             num_total_requests = len(viable_teammates)
             self.num_collision_requests = num_total_requests
+            print(ANSI.LIGHT_BLUE.value + f"        Robot {self.team.name}{self.id} in collision, waiting for requests from:" + ANSI.RESET.value)
+            for teammate in viable_teammates:
+                print(ANSI.LIGHT_BLUE.value + f"            {teammate.id}" + ANSI.RESET.value)
         else:
             num_total_requests = self.num_collision_requests
+        
+        if num_total_requests == 0:
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} has no teammates to collide with" + ANSI.RESET.value)
+            return 
 
         received_requests = [request for request in self.kb.read_messages["please_help"] if request.content == tuple(self.pos)]
         num_received_requests = len(received_requests)
@@ -441,6 +457,7 @@ class Robot:
                         if self.kb.read_messages["pairup_ack"]:
                             partner = self.kb.read_messages["pairup_ack"][-1].proposer # only a single request would've been sent out
                             self.partner = partner
+                            self.pros_partner = partner
                             self.send_restriction() # restrict the tile
                             self.clean_pairup()
                             self.in_collision = False
@@ -458,6 +475,7 @@ class Robot:
                     if self.kb.read_messages["pairup_req"]:
                         partner = self.kb.read_messages["pairup_req"][-1].proposer
                         self.partner = partner
+                        self.pros_partner = partner
                         self.send_pairup_acknowledgement(partner)
                         self.clean_pairup()
                         self.in_collision = False
@@ -895,7 +913,7 @@ class Robot:
     def check_empty(self):
         """Check if there exists a teammate in the next position."""
         robots = self.kb.sensed.get(self.next_position()).get("robots", [])
-        teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
+        teammates = [robot for robot in robots if (robot != self and robot.team == self.team and robot.carrying == False)]
         self.empty_target = len(teammates) == 0
 
         return self.empty_target
@@ -903,7 +921,7 @@ class Robot:
     def check_multiple(self):
         """Check if there exists multiple teammates in the next position."""
         robots = self.kb.sensed.get(self.next_position()).get("robots", [])
-        teammates = [robot for robot in robots if (robot != self and robot.team == self.team)]
+        teammates = [robot for robot in robots if (robot != self and robot.team == self.team and robot.carrying == False)]
         self.should_help = len(teammates) < 2 # if multiple teammates already exist, then don't try to help 
 
         return not self.should_help
@@ -920,7 +938,9 @@ class Robot:
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
-        _, tile_teammates, tile_gold = self.sense_current_tile()
+        tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
+        viable_teammates = [robot for robot in tile_robots if (robot != self and robot.team == self.team and robot.carrying == False)]
+
         self.clean_help_requests()
         self.remove_restrictions()
         self.check_partner()
@@ -955,13 +975,13 @@ class Robot:
                         return
             
             if tile_gold > 0:
-                if self.check_collision(): # PAIR UP (COLLISION) if involved in a collision
-                    self.decision = "pair_up_collision"
-                    self.target_position = tuple(self.pos)
-                    print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is attempting to pair up in a collision." + ANSI.RESET.value)
-                    return
+                if len(viable_teammates) > 0: # PAIR UP if has teammates and not involved in a collision
+                    if self.check_collision(): # PAIR UP (COLLISION) if involved in a collision
+                        self.decision = "pair_up_collision"
+                        self.target_position = tuple(self.pos)
+                        print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is attempting to pair up in a collision." + ANSI.RESET.value)
+                        return
                 
-                if len(tile_teammates) > 0: # PAIR UP if has teammates and not involved in a collision
                     if not self.should_help:
                         self.decision = "wait"
                         self.target_position = tuple(self.pos)
@@ -973,7 +993,7 @@ class Robot:
                         print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is attempting to pair up in normal circumstances" + ANSI.RESET.value)
                         return
 
-                else: # if no teammates there at the moment
+                else: # if no viable teammates there at the moment
                     self.decision = "wait"
                     self.target_position = tuple(self.pos)
                     self.send_help_request()
@@ -1000,6 +1020,9 @@ class Robot:
             print(ANSI.GREEN.value + 
                 f"Robot: {self.team.name}{self.id}, target: {self.target_position}, decision: {self.decision}, position: {tuple(self.pos)}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
+        print(ANSI.ITALIC.value + 
+              f"        seeking help: {self.seeking_help}, offering help: {self.offering_help}, should help: {self.should_help}, num collision requests: {self.num_collision_requests}" +
+              ANSI.RESET.value)
             
         if self.decision == "move_forward":
             self.move()
