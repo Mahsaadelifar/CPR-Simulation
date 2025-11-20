@@ -39,3 +39,6 @@ class ANSI(Enum):
     BLUE = "\u001b[34m"
     MAGENTA = "\u001b[35m"
     CYAN = "\u001b[36m"
+    LIGHT_BLUE = "\033[1;34m"
+    LIGHT_PURPLE = "\033[1;35m"
+

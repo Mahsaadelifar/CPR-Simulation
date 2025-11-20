@@ -156,12 +156,13 @@ class Robot:
 
     def __init__(self, grid: Grid, team: Team, position: list, direction: Dir, deposit: list, timestep: int = 0):
       self.grid = grid
-      self.id = Robot.next_id; Robot.next_id += 1
       self.team = team
       self.pos = position             # [x,y]
       self.dir = direction            # Dir
       self.kb = KB(deposit = deposit) # !!! might have a better way to keep track of this
       self.timestep = timestep        # current timestep
+
+      self.id = int(self.calc_dist(self.pos,self.kb.deposit)) #need to assign id here after pos and deposit has been assigned
 
       self.carrying = False       # True if carrying gold
       self.decision = "wait"
@@ -182,6 +183,7 @@ class Robot:
 
       self.should_help = True          # next (target) tile is empty; if so, be allowed to send help request
       self.empty_target = True
+
       self.num_collision_requests = 0   # number of total help requests needed during a collision
 
     ### HELPER FUNCTIONS ###
@@ -364,12 +366,12 @@ class Robot:
             pass
 
     def pair_up(self):
-        _, tile_teammates, tile_gold = self.sense_current_tile()
+        _, tile_teammates, _ = self.sense_current_tile()
         if self.partner:
-            print(ANSI.RED.value + f"Robot {self.id} already has a partner" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} already has a partner" + ANSI.RESET.value)
             return
         if len(tile_teammates) == 0:
-            print(ANSI.RED.value + f"Robot {self.id} has no teammates to partner with" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} has no teammates to partner with" + ANSI.RESET.value)
             return 
         
         if self.offering_help: # already responding to a help request
@@ -378,10 +380,10 @@ class Robot:
                 self.partner = partner
                 self.send_restriction() # restrict the tile
                 self.clean_pairup()
-                print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
                 return
             else:
-                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for pairup acknowledgement from {self.pros_partner.id}" + ANSI.RESET.value)
+                print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} waiting for pairup acknowledgement from {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                 return
 
         # not offering help yet
@@ -391,7 +393,7 @@ class Robot:
                     self.pros_partner = request.proposer
                     self.send_pairup_request(self.pros_partner)
                     self.offering_help = True
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} sent pairup request to {self.pros_partner.id}" + ANSI.RESET.value)
+                    print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} sent pairup request to {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                     return
 
         if self.seeking_help: # the one who sent out a help request
@@ -400,17 +402,24 @@ class Robot:
                 self.partner = partner
                 self.send_pairup_acknowledgement(partner)
                 self.clean_pairup()
-                print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
                 return
             else:
-                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for a pairup request" + ANSI.RESET.value)
+                print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} waiting for a pairup request" + ANSI.RESET.value)
                 return
         
         else:
-            print(ANSI.MAGENTA.value + f"Robot {self.id} is waiting for a help request" + ANSI.RESET.value)
+            print(ANSI.LIGHT_PURPLE.value + f"Robot {self.team.name}{self.id} is waiting for a help request" + ANSI.RESET.value)
 
     def pair_up_collision(self):
-        tile_robots, _, _ = self.sense_current_tile()
+        tile_robots, tile_teammates, _ = self.sense_current_tile()
+        if self.partner:
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} already has a partner" + ANSI.RESET.value)
+            return
+        if len(tile_teammates) == 0:
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} has no teammates to partner with" + ANSI.RESET.value)
+            return 
+        
         if self.num_collision_requests == 0:
             viable_teammates = [robot for robot in tile_robots if (robot != self and robot.team == self.team and robot.carrying == False)] # assuming that robots can see when others are carrying gold (i.e. partnered up)
             num_total_requests = len(viable_teammates)
@@ -438,68 +447,70 @@ class Robot:
                             self.partner = partner
                             self.send_restriction() # restrict the tile
                             self.clean_pairup()
-                            print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                            self.in_collision = False
+                            print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
                             return
                         else:
-                            print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for pairup acknowledgement from {self.pros_partner.id}" + ANSI.RESET.value)
+                            print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} waiting for pairup acknowledgement from {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                             return
                     else:
                         self.pros_partner = received_requests[-1].proposer
                         self.send_pairup_request(self.pros_partner)
                         self.offering_help = True
-                        print(ANSI.CYAN.value + f"Robot {self.id} is active in a collision at {self.pos}. Sending pairup request to Robot {self.pros_partner.id}" + ANSI.RESET.value)
+                        print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} is active in a collision at {self.pos}. Sending pairup request to Robot {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                 else:
                     if self.kb.read_messages["pairup_req"]:
                         partner = self.kb.read_messages["pairup_req"][-1].proposer
                         self.partner = partner
                         self.send_pairup_acknowledgement(partner)
                         self.clean_pairup()
-                        print(ANSI.YELLOW.value + f"Robot {self.id} successfully partnered with Robot {self.partner.id}" + ANSI.RESET.value)
+                        self.in_collision = False
+                        print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} successfully partnered with Robot {self.partner.team.name}{self.partner.id}" + ANSI.RESET.value)
                         return
                     else:
-                        print(ANSI.CYAN.value + f"Robot {self.id} is passive in a collision at {self.pos}. Waiting for pairup request from Robot {self.pros_partner.id}" + ANSI.RESET.value)
+                        print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} is passive in a collision at {self.pos}. Waiting for pairup request from Robot {self.pros_partner.team.name}{self.pros_partner.id}" + ANSI.RESET.value)
                         return
         else:
-            print(ANSI.CYAN.value + f"Robot {self.id} is involved in a collision at {self.pos}. {num_received_requests}/{num_total_requests} requests received" + ANSI.RESET.value)
+            print(ANSI.LIGHT_BLUE.value + f"Robot {self.team.name}{self.id} is involved in a collision at {self.pos}. {num_received_requests}/{num_total_requests} requests received" + ANSI.RESET.value)
 
     def pickup_gold(self):
         tile = self.grid.tiles[tuple(self.pos)]
-        tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
+        _, tile_teammates, tile_gold = self.sense_current_tile()
 
         if len(tile_teammates) > 1:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: More than two robots in the cell!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: More than two robots in the cell!" + ANSI.RESET.value)
             self.reset_pickup()
             self.failed_pickup = True
             return
         if not self.partner:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No partner to pick up gold with!" + ANSI.RESET.value)
             self.reset_pickup()
             self.failed_pickup = True
             return
         if self.carrying:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: Already carrying gold!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: Already carrying gold!" + ANSI.RESET.value)
             self.reset_pickup()
             self.failed_pickup = True
             return
         if tile_gold == 0:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No gold to pick up!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No gold to pick up!" + ANSI.RESET.value)
             self.reset_pickup()
             self.failed_pickup = True
             return
 
         if self.partner.decision != "pickup_gold":
-            print(ANSI.RED.value + f"ERROR Robot {self.id} isn't in sync with its partner!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id} isn't in sync with its partner!" + ANSI.RESET.value)
             self.reset_pickup()
             self.failed_pickup = True
             return
         if self.partner.failed_pickup:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}'s partner failed to pick up!'" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}'s partner failed to pick up!'" + ANSI.RESET.value)
             self.reset_pickup()
             return
         if tile_gold == 1:
             for robot in tile.robots:
                 if robot.team != self.team and robot.partner and robot.decision == "pickup_gold":
-                    print(ANSI.RED.value + f"ERROR Robot {self.id} is fighting with other robots for the gold!" + ANSI.RESET.value)
+                    print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id} is fighting with other robots for the gold!" + ANSI.RESET.value)
                     self.reset_pickup()
                     return
 
@@ -507,41 +518,41 @@ class Robot:
             self.carrying = True
             tile.remove_gold()
             self.reset_pickup()
-            print(ANSI.YELLOW.value + f"Robot {self.id} successfully picked up gold at {self.pos}!" + ANSI.RESET.value)
+            print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} successfully picked up gold at {self.pos}!" + ANSI.RESET.value)
             self.send_unrestriction()
             return
         else:
             self.reset_pickup()
-            print(ANSI.RED.value + f"Robot {self.id} failed to pick up gold at {self.pos}!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"Robot {self.team.name}{self.id} failed to pick up gold at {self.pos}!" + ANSI.RESET.value)
 
     def plan_pickup(self):
         if self.pickup_t_sync:
             if self.pickup_t_sync <= self.timestep:
-                print(ANSI.RED.value + f"Robot {self.id} can't fulfil pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                print(ANSI.RED.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                 self.reset_pickup()
                 return
             else:
-                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting to pickup gold at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} waiting to pickup gold at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                 return
         if self.id < self.partner.id: # lesser ID
             pickup_ack_t = self.kb.read_partner_messages.get("pickup_ack")[-1].content if self.kb.read_partner_messages.get("pickup_ack") else None
             if pickup_ack_t: # acknowledgement of a pickup request from partner exists
                 if self.timestep < pickup_ack_t:
                     self.pickup_t_sync = pickup_ack_t
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                    print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     return
                 else:
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} can't fulfil pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                    print(ANSI.RED.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     self.reset_pickup()
                     return
             elif self.pickup_proposed == False: # no acknowledgement of a pickup request from partner; pickup request not proposed
                 t_sync = self.timestep + 10
                 self.send_pickup_request(t_sync)
                 self.pickup_proposed = True
-                print(ANSI.MAGENTA.value + f"Robot {self.id} proposed a pickup request!" + ANSI.RESET.value)
+                print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} proposed a pickup request!" + ANSI.RESET.value)
                 return
             else:
-                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for a pickup acknowledgement!" + ANSI.RESET.value)
+                print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} waiting for a pickup acknowledgement!" + ANSI.RESET.value)
                 return
         else: # higher ID
             pickup_req_t = self.kb.read_partner_messages.get("pickup_req")[-1].content if self.kb.read_partner_messages.get("pickup_req") else None
@@ -549,23 +560,23 @@ class Robot:
                 if self.timestep < pickup_req_t:
                     self.send_pickup_acknowledgement(pickup_req_t)
                     self.pickup_t_sync = pickup_req_t
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                    print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} acknowledges pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     return
                 else:
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} can't fulfil pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
+                    print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} can't fulfill pickup at timestep {self.pickup_t_sync}!" + ANSI.RESET.value)
                     self.reset_pickup()
                     return
             else:
-                print(ANSI.MAGENTA.value + f"Robot {self.id} waiting for a pickup request!" + ANSI.RESET.value)
+                print(ANSI.YELLOW.value + f"Robot {self.team.name}{self.id} waiting for a pickup request!" + ANSI.RESET.value)
                 return
 
     def deposit_gold(self):
         if not self.partner:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner...? How'd you get this far??" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No partner...? How'd you get this far??" + ANSI.RESET.value)
         if not self.carrying:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: Not carrying gold!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: Not carrying gold!" + ANSI.RESET.value)
         if self.pos != self.kb.deposit:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: Not at deposit point!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: Not at deposit point!" + ANSI.RESET.value)
         
         self.carrying = False
         self.grid.add_score(self.team)
@@ -599,22 +610,22 @@ class Robot:
             help_message = help_requests[0]
             if self.calc_dist(self.pos, help_message.content) < 5: # distance threshold
                 self.target_position = tuple(help_message.content)
-                print(ANSI.CYAN.value + f"Robot {self.id} considering help requests" + ANSI.RESET.value)
+                print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} considering help requests" + ANSI.RESET.value)
     
         if self.closest_gold(): # GO TO NEAREST GOLD
             self.target_position = tuple(self.closest_gold())
-            print(ANSI.CYAN.value + f"Robot {self.id} considering nearest gold at {self.closest_gold()}" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} considering nearest gold at {self.closest_gold()}" + ANSI.RESET.value)
 
         if restricted_tiles:
             for tile in restricted_tiles:
                 if tuple(self.pos) == tile.content: # LEAVE
-                    print(ANSI.CYAN.value + f"Robot {self.id} recognizes it must leave cell {self.next_position()}" + ANSI.RESET.value)
+                    print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} recognizes it must leave cell {self.next_position()}" + ANSI.RESET.value)
                     self.target_position = tuple(self.kb.deposit)
 
         self.decision = self.next_move_to_target()
 
         if self.decision == "move_forward" and self.check_restriction(self.next_position()):
-            print(ANSI.CYAN.value + f"Robot {self.id} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
+            print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} recognizes it can't enter cell {self.next_position()}" + ANSI.RESET.value)
             self.target_position = tuple(self.pos)
             self.decision = "wait" # overrides decision
 
@@ -633,7 +644,7 @@ class Robot:
         return self.turn_toward(self.calc_target_dir())
 
     def coordinate_moves(self):
-        print(ANSI.MAGENTA.value + f"Robot {self.id} is coordinating moves" + ANSI.RESET.value)
+        print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is coordinating moves" + ANSI.RESET.value)
         self.target_position = tuple(self.kb.deposit)
 
         # handling sync messages for partners
@@ -651,14 +662,14 @@ class Robot:
             if self.dir != target_dir: # if not facing the right direction, turn to face the right direction
                 self.decision = self.turn_toward(target_dir)
                 self.send_direction() # send new direction after turning
-                print(ANSI.MAGENTA.value + f"Robot {self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
+                print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is turning direction to {self.dir.name}" + ANSI.RESET.value)
                 return
 
             # we are currently facing the right direction
             # WAIT if partner not facing the right direction (calculated best direction to head to deposit from current position)
             if partner_dir != target_dir: # wait for partner before each move
                 self.decision = "wait"
-                print(ANSI.MAGENTA.value + f"Robot {self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
+                print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is waiting for teammate to turn direction to {self.dir.name}" + ANSI.RESET.value)
                 self.send_move_request() #send move request if we are facing the right direction
                 self.send_direction()
                 return
@@ -674,7 +685,7 @@ class Robot:
                 elif self.move_sync_pending["confirmed"] and self.timestep == self.move_sync_pending["t_sync"]:
                     self.move_sync_plan = self.move_sync_pending
                     self.move_sync_pending = None
-                    print(ANSI.MAGENTA.value + f"Robot {self.id}: activating sync plan at timestep {self.timestep}" + ANSI.RESET.value)
+                    print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id}: activating sync plan at timestep {self.timestep}" + ANSI.RESET.value)
             
         # if already executing a synced plan, check the plan for what to do
         if self.move_sync_plan:
@@ -682,7 +693,7 @@ class Robot:
             step_index = plan["current_step"]
             planned_step_timestep = plan["t_sync"] + step_index
             move = plan["plan"][step_index]
-            print(f"robot: {self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
+            print(f"robot: {self.team.name}{self.id} current timestep: {self.timestep}, planned_step_timestep:{planned_step_timestep}, move: {move}")
             if self.timestep == planned_step_timestep:
                 # move = plan["plan"][step_index]
                 self.decision = move
@@ -735,7 +746,7 @@ class Robot:
         if self.partner:
             self.send_message(message, self.partner)
         else:
-            print(ANSI.RED.value + f"ERROR Robot {self.id}: No partner to send message to!" + ANSI.RESET.value)
+            print(ANSI.RED.value + f"ERROR Robot {self.team.name}{self.id}: No partner to send message to!" + ANSI.RESET.value)
 
     def send_pairup_request(self, acceptor: 'Robot'):
         """Send a pairup request to the acceptor robot."""
@@ -802,7 +813,7 @@ class Robot:
         self.send_to_partner(sync_message)
         self.move_sync_pending = {"t_sync": t_sync, "plan": plan, "confirmed": False, "current_step": 0}
         self.move_sync_proposed = True
-        print(f"Robot {self.id}: proposed sync plan for timestep {t_sync}: {plan}")
+        print(f"Robot {self.team.name}{self.id}: proposed sync plan for timestep {t_sync}: {plan}")
 
     def handle_sync_messages(self,timestep):
         msgs = self.kb.read_partner_messages
@@ -826,10 +837,10 @@ class Robot:
 
                 self.send_to_partner(ack)
                 self.move_sync_pending = {"t_sync": t_sync, "plan": plan, "confirmed": True, "current_step":0}
-                print(f"Robot {self.id}: accepted sync plan starting at {t_sync}: {plan}")
+                print(f"Robot {self.team.name}{self.id}: accepted sync plan starting at {t_sync}: {plan}")
             
             else:
-                print(f"Robot {self.id}: rejected expired plan proposed at (t={t_sync}, now={timestep})")
+                print(f"Robot {self.team.name}{self.id}: rejected expired plan proposed at (t={t_sync}, now={timestep})")
         
         # responding to partner acknowledgement
         if msgs["move_sync_ack"]:
@@ -839,9 +850,9 @@ class Robot:
             if self.move_sync_pending and self.move_sync_pending["t_sync"] == t_sync:
                 if timestep < t_sync:
                     self.move_sync_pending["confirmed"] = True
-                    print(f"Robot {self.id}: sync plan confirmed for timestep {t_sync}")
+                    print(f"Robot {self.team.name}{self.id}: sync plan confirmed for timestep {t_sync}")
                 else:
-                    print(f"Robot {self.id}: received late ack for t={t_sync}, ignoring")
+                    print(f"Robot {self.team.name}{self.id}: received late ack for t={t_sync}, ignoring")
 
     def check_restriction(self, coordinates):
         return self.kb.check_restriction(coordinates)
@@ -874,13 +885,14 @@ class Robot:
             if len(tile_teammates) > 0: # self is not counted
                 return True
         return False
-
 ###__________________________________________________________________________###
 
     def plan(self, timestep):
         tile_robots, tile_teammates, tile_gold = self.sense_current_tile()
         self.clean_help_requests()
         self.remove_restrictions()
+        if self.next_position() == self.target_position and tuple(self.pos) != self.target_position:
+            self.check_empty() # check if next tile is empty, used for collision checks
 
         if self.partner:
             if self.carrying: # COORDINATE MOVES if carrying gold with partner
@@ -911,19 +923,19 @@ class Robot:
                 if self.check_collision(): # PAIR UP (COLLISION) if involved in a collision
                     self.decision = "pair_up_collision"
                     self.target_position = tuple(self.pos)
-                    print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up in a collision." + ANSI.RESET.value)
+                    print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is attempting to pair up in a collision." + ANSI.RESET.value)
                     return
                 
                 if len(tile_teammates) > 0: # PAIR UP if has teammates and not involved in a collision
                     if not self.should_help:
                         self.decision = "wait"
                         self.target_position = tuple(self.pos)
-                        print(ANSI.MAGENTA.value + f"Robot {self.id} choosing not to help." + ANSI.RESET.value)
+                        print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} choosing not to help." + ANSI.RESET.value)
                         return
                     else:
                         self.decision = "pair_up"
                         self.target_position = tuple(self.pos)
-                        print(ANSI.MAGENTA.value + f"Robot {self.id} is attempting to pair up in normal circumstances" + ANSI.RESET.value)
+                        print(ANSI.MAGENTA.value + f"Robot {self.team.name}{self.id} is attempting to pair up in normal circumstances" + ANSI.RESET.value)
                         return
 
                 else: # if no teammates there at the moment
@@ -931,11 +943,11 @@ class Robot:
                     self.target_position = tuple(self.pos)
                     self.send_help_request()
                     self.seeking_help = True
-                    print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
+                    print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} at {self.pos} is sending help request" + ANSI.RESET.value)
                     return
 
             else: # EXPLORE if all else is unfulfilled
-                print(ANSI.CYAN.value + f"Robot {self.id} at {self.pos} is exploring" + ANSI.RESET.value)
+                print(ANSI.CYAN.value + f"Robot {self.team.name}{self.id} at {self.pos} is exploring" + ANSI.RESET.value)
                 self.set_target() # sets decision and target position
                 print(ANSI.CYAN.value + "---" + ANSI.RESET.value)
                 return
@@ -943,11 +955,11 @@ class Robot:
     def execute(self):
         if self.partner:
             print(ANSI.GREEN.value + 
-                f"robot: {self.id}, partner: {self.partner.id}, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
+                f"Robot: {self.team.name}{self.id}, partner: {self.partner.team.name}{self.partner.id}, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
         else:
             print(ANSI.GREEN.value + 
-                f"robot: {self.id}, partner: None, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
+                f"Robot: {self.team.name}{self.id}, partner: None, target: {self.target_position}, decision: {self.decision}, position: {self.pos}, team_deposit: {self.kb.deposit}" +
                 ANSI.RESET.value)
 
         if self.decision == "move_forward":
